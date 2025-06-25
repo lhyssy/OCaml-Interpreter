@@ -1,17 +1,53 @@
 open Ast
 
-(* 寄存器定义 *)
-type reg =
-  | A0 | A1 | A2 | A3 | A4 | A5 | A6 | A7  (* 参数/结果寄存器 *)
-  | T0 | T1 | T2 | T3 | T4 | T5 | T6       (* 临时寄存器 *)
-  | S0 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11 (* 保存寄存器 *)
-  | RA                                     (* 返回地址寄存器 *)
-  | SP                                     (* 栈指针寄存器 *)
-  | FP                                     (* 帧指针寄存器 *)
-  | ZERO                                   (* 零寄存器 *)
+let is_power_of_two n =
+  n > 0 && (n land (n - 1)) = 0
 
-(* 将寄存器转换为字符串 *)
-let string_of_reg = function
+(* 中间表示 (IR) *)
+type vreg = int (* 虚拟寄存器 *)
+
+type operand =
+  | VReg of vreg
+  | Imm of int
+
+type instruction =
+  | IR_Label of string
+  | IR_Comment of string
+  (* Moves *)
+  | IR_Li of vreg * int
+  | IR_Mv of vreg * vreg
+  (* Arithmetic *)
+  | IR_Add of vreg * vreg * operand
+  | IR_Sub of vreg * vreg * operand
+  | IR_Mul of vreg * vreg * vreg
+  | IR_Div of vreg * vreg * vreg
+  | IR_Rem of vreg * vreg * vreg
+  (* Bitwise *)
+  | IR_Slli of vreg * vreg * int
+  | IR_Srli of vreg * vreg * int
+  (* Comparison *)
+  | IR_Seqz of vreg * vreg
+  | IR_Snez of vreg * vreg
+  | IR_Slt of vreg * vreg * vreg
+  | IR_Sgt of vreg * vreg * vreg
+  (* Memory *)
+  | IR_Lw of vreg * int * vreg (* Lw rd, offset(rs1) *)
+  | IR_Sw of vreg * int * vreg (* Sw rs1, offset(rd) *)
+  (* Control Flow *)
+  | IR_J of string
+  | IR_Beqz of vreg * string
+  | IR_Bnez of vreg * string
+  | IR_Call of string
+  | IR_Ret
+
+(* 真实寄存器定义 *)
+type preg =
+  | A0 | A1 | A2 | A3 | A4 | A5 | A6 | A7
+  | T0 | T1 | T2 | T3 | T4 | T5 | T6
+  | S0 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11
+  | RA | SP | FP | ZERO
+
+let string_of_preg = function
   | A0 -> "a0" | A1 -> "a1" | A2 -> "a2" | A3 -> "a3"
   | A4 -> "a4" | A5 -> "a5" | A6 -> "a6" | A7 -> "a7"
   | T0 -> "t0" | T1 -> "t1" | T2 -> "t2" | T3 -> "t3"
@@ -21,419 +57,511 @@ let string_of_reg = function
   | S8 -> "s8" | S9 -> "s9" | S10 -> "s10" | S11 -> "s11"
   | RA -> "ra" | SP -> "sp" | FP -> "fp" | ZERO -> "zero"
 
-(* 变量环境，存储变量名到栈偏移量的映射 *)
+(* 变量环境 *)
 type var_env = {
-  vars: (string * int) list;  (* 变量名 -> 相对于fp的偏移量 *)
-  next_offset: int;           (* 下一个可用的栈偏移 *)
+  vars: (string, int) Hashtbl.t; (* 变量名 -> 栈偏移量 *)
+  mutable next_offset: int;
 }
 
-(* 创建一个新的变量环境 *)
-let empty_env = {
-  vars = [];
-  next_offset = -4;  (* 从fp-4开始分配局部变量 *)
+let empty_var_env () = {
+  vars = Hashtbl.create 16;
+  next_offset = -4;
 }
 
-(* 在环境中添加一个新变量 *)
-let add_var env name =
+let add_var_stack env name =
   let offset = env.next_offset in
-  let env' = {
-    vars = (name, offset) :: env.vars;
-    next_offset = offset - 4;  (* 每个int变量占4字节 *)
-  } in
-  (env', offset)
+  Hashtbl.add env.vars name offset;
+  env.next_offset <- env.next_offset - 4;
+  offset
 
-(* 在环境中查找变量的偏移量 *)
-let find_var env name =
-  try List.assoc name env.vars
+let find_var_offset env name =
+  try Hashtbl.find env.vars name
   with Not_found -> failwith ("Undefined variable: " ^ name)
 
 (* 编译器环境 *)
 type compile_env = {
-  vars: var_env;                   (* 局部变量环境 *)
-  mutable label_count: int;        (* 用于生成唯一标签 *)
-  mutable current_loop: (string * string) option;  (* 当前循环的开始和结束标签 *)
-  mutable current_func_return_label: string;       (* 当前函数的返回标签 *)
+  var_env: var_env;
+  mutable vreg_count: int;
+  mutable label_count: int;
+  mutable current_loop: (string * string) option;
+  mutable current_func_return_label: string;
+  mutable instructions: instruction list;
 }
 
-(* 创建初始编译环境 *)
 let init_compile_env () = {
-  vars = empty_env;
+  var_env = empty_var_env ();
+  vreg_count = 0;
   label_count = 0;
   current_loop = None;
-  current_func_return_label = ""; (* 将在编译每个函数时设置 *)
+  current_func_return_label = "";
+  instructions = [];
 }
 
-(* 生成一个新的唯一标签 *)
+let fresh_vreg env =
+  let v = env.vreg_count in
+  env.vreg_count <- v + 1;
+  v
+
 let fresh_label env prefix =
-  let label = prefix ^ "_" ^ string_of_int env.label_count in
-  env.label_count <- env.label_count + 1;
-  label
+  let l = env.label_count in
+  env.label_count <- l + 1;
+  prefix ^ "_" ^ string_of_int l
 
-(* 生成RISC-V汇编代码 *)
-let generate_riscv program =
+let emit env instr =
+  env.instructions <- instr :: env.instructions
+
+(* IR to Assembly *)
+let string_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) =
+  let out = Buffer.create 1024 in
+  let reg r =
+    match Hashtbl.find vreg_map r with
+    | Some preg -> string_of_preg preg
+    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented)")
+  in
+  let op_to_s = function
+    | VReg r -> reg r
+    | Imm i -> string_of_int i
+  in
+  List.iter (function
+    | IR_Label s -> Buffer.add_string out (s ^ ":\n")
+    | IR_Comment s -> Buffer.add_string out ("\t# " ^ s ^ "\n")
+    | IR_Li (r, i) -> Printf.bprintf out "\tli %s, %d\n" (reg r) i
+    | IR_Mv (rd, rs) -> Printf.bprintf out "\tmv %s, %s\n" (reg rd) (reg rs)
+    | IR_Add (rd, r1, op2) -> Printf.bprintf out "\tadd %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
+    | IR_Sub (rd, r1, op2) -> Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
+    | IR_Mul (rd, r1, r2) -> Printf.bprintf out "\tmul %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Div (rd, r1, r2) -> Printf.bprintf out "\tdiv %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Rem (rd, r1, r2) -> Printf.bprintf out "\trem %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Slli (rd, r1, i) -> Printf.bprintf out "\tslli %s, %s, %d\n" (reg rd) (reg r1) i
+    | IR_Srli (rd, r1, i) -> Printf.bprintf out "\tsrli %s, %s, %d\n" (reg rd) (reg r1) i
+    | IR_Seqz (rd, rs) -> Printf.bprintf out "\tseqz %s, %s\n" (reg rd) (reg rs)
+    | IR_Snez (rd, rs) -> Printf.bprintf out "\tsnez %s, %s\n" (reg rd) (reg rs)
+    | IR_Slt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Sgt (rd, r1, r2) -> Printf.bprintf out "\tsgt %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Lw (rd, off, rs) -> Printf.bprintf out "\tlw %s, %d(%s)\n" (reg rd) off (reg rs)
+    | IR_Sw (rs, off, rd) -> Printf.bprintf out "\tsw %s, %d(%s)\n" (reg rs) off (reg rd)
+    | IR_J s -> Printf.bprintf out "\tj %s\n" s
+    | IR_Beqz (rs, l) -> Printf.bprintf out "\tbeqz %s, %s\n" (reg rs) l
+    | IR_Bnez (rs, l) -> Printf.bprintf out "\tbnez %s, %s\n" (reg rs) l
+    | IR_Call s -> Printf.bprintf out "\tcall %s\n" s
+    | IR_Ret -> Buffer.add_string out "\tret\n"
+  ) (List.rev instrs);
+  Buffer.contents out
+  
+(* 表达式求值，返回存放结果的虚拟寄存器 *)
+let rec compile_expr env expr : vreg =
+  match expr with
+  | EInt n ->
+      let rd = fresh_vreg env in
+      emit env (IR_Li (rd, n));
+      rd
+  | EVar name ->
+      let rd = fresh_vreg env in
+      let offset = find_var_offset env.var_env name in
+      emit env (IR_Comment ("Load " ^ name));
+      emit env (IR_Lw (rd, offset, 0)); (* vreg 0 is FP *)
+      rd
+  | EUnop (op, e) ->
+      let rs = compile_expr env e in
+      (match op with
+      | Neg ->
+          let rd = fresh_vreg env in
+          let zero_vreg = fresh_vreg env in
+          emit env (IR_Li (zero_vreg, 0));
+          emit env (IR_Sub (rd, zero_vreg, VReg rs));
+          rd
+      | Not ->
+          let rd = fresh_vreg env in
+          emit env (IR_Seqz (rd, rs));
+          rd
+      | Plus -> rs
+      )
+  | EBinop (op, e1, e2) ->
+      let r1 = compile_expr env e1 in
+      let r2 = compile_expr env e2 in
+      let rd = fresh_vreg env in
+      (match op with
+      | Add -> emit env (IR_Add (rd, r1, VReg r2))
+      | Sub -> emit env (IR_Sub (rd, r1, VReg r2))
+      | Mul -> emit env (IR_Mul (rd, r1, r2))
+      | Div -> emit env (IR_Div (rd, r1, r2))
+      | Mod -> emit env (IR_Rem (rd, r1, r2))
+      | Eq ->
+          let t = fresh_vreg env in
+          emit env (IR_Sub (t, r1, VReg r2));
+          emit env (IR_Seqz (rd, t))
+      | Neq ->
+          let t = fresh_vreg env in
+          emit env (IR_Sub (t, r1, VReg r2));
+          emit env (IR_Snez (rd, t))
+      | Lt -> emit env (IR_Slt (rd, r1, r2))
+      | Gt -> emit env (IR_Sgt (rd, r1, r2))
+      | Le ->
+          let t = fresh_vreg env in
+          emit env (IR_Sgt (t, r1, r2));
+          emit env (IR_Seqz (rd, t))
+      | Ge ->
+          let t = fresh_vreg env in
+          emit env (IR_Slt (t, r1, r2));
+          emit env (IR_Seqz (rd, t))
+      | And ->
+          let label_false = fresh_label env "and_false" in
+          let label_end = fresh_label env "and_end" in
+          emit env (IR_Beqz (r1, label_false));
+          emit env (IR_Beqz (r2, label_false));
+          emit env (IR_Li (rd, 1));
+          emit env (IR_J label_end);
+          emit env (IR_Label label_false);
+          emit env (IR_Li (rd, 0));
+          emit env (IR_Label label_end)
+      | Or ->
+          let label_true = fresh_label env "or_true" in
+          let label_end = fresh_label env "or_end" in
+          emit env (IR_Bnez (r1, label_true));
+          emit env (IR_Bnez (r2, label_true));
+          emit env (IR_Li (rd, 0));
+          emit env (IR_J label_end);
+          emit env (IR_Label label_true);
+          emit env (IR_Li (rd, 1));
+          emit env (IR_Label label_end)
+      );
+      rd
+  | ECall (func_name, args) ->
+      let arg_vregs = List.map (compile_expr env) args in
+      let rd = fresh_vreg env in
+      (* This is simplified. Proper call sequence is more complex *)
+      emit env (IR_Comment "Setup call arguments");
+      (* a0-a7 are vregs 1-8 for now *)
+      List.iteri (fun i arg_vreg ->
+        if i < 8 then emit env (IR_Mv (i+1, arg_vreg))
+      ) arg_vregs;
+      emit env (IR_Call func_name);
+      emit env (IR_Mv (rd, 1)); (* Assume result in a0 (vreg 1) *)
+      rd
+
+(* 编译语句 *)
+let rec compile_stmt env stmt : unit =
+  match stmt with
+  | SEmpty -> ()
+  | SExpr e -> let _ = compile_expr env e in ()
+  | SReturn (Some e) ->
+      let rv = compile_expr env e in
+      emit env (IR_Mv (1, rv)); (* Move to a0 *)
+      emit env (IR_J env.current_func_return_label)
+  | SReturn None ->
+      emit env (IR_Li (1, 0)); (* a0 = 0 *)
+      emit env (IR_J env.current_func_return_label)
+  | SDeclare (name, init_expr) ->
+      let init_vreg = compile_expr env init_expr in
+      let offset = add_var_stack env.var_env name in
+      emit env (IR_Comment ("Declare " ^ name));
+      emit env (IR_Sw (init_vreg, offset, 0)) (* sw init_vreg, offset(fp) *)
+  | SAssign (name, expr) ->
+      let val_vreg = compile_expr env expr in
+      let offset = find_var_offset env.var_env name in
+      emit env (IR_Comment ("Assign " ^ name));
+      emit env (IR_Sw (val_vreg, offset, 0)) (* sw val_vreg, offset(fp) *)
+  | SIf (cond, then_s, else_opt) ->
+      let cond_vreg = compile_expr env cond in
+      let else_label = fresh_label env "else" in
+      let end_label = fresh_label env "endif" in
+      emit env (IR_Beqz (cond_vreg, else_label));
+      compile_stmt env then_s;
+      emit env (IR_J end_label);
+      emit env (IR_Label else_label);
+      (match else_opt with
+      | Some s -> compile_stmt env s
+      | None -> ());
+      emit env (IR_Label end_label)
+  | SWhile (cond, body) ->
+      let start_label = fresh_label env "while_start" in
+      let end_label = fresh_label env "while_end" in
+      let old_loop = env.current_loop in
+      env.current_loop <- Some (start_label, end_label);
+      
+      emit env (IR_Label start_label);
+      let cond_vreg = compile_expr env cond in
+      emit env (IR_Beqz (cond_vreg, end_label));
+      compile_stmt env body;
+      emit env (IR_J start_label);
+      emit env (IR_Label end_label);
+
+      env.current_loop <- old_loop
+  | SBreak ->
+      (match env.current_loop with
+      | Some (_, end_l) -> emit env (IR_J end_l)
+      | None -> failwith "break outside loop")
+  | SContinue ->
+      (match env.current_loop with
+      | Some (start_l, _) -> emit env (IR_J start_l)
+      | None -> failwith "continue outside loop")
+  | SBlock stmts -> List.iter (compile_stmt env) stmts
+
+(* 编译一个函数 *)
+let compile_func func_def return_label =
   let env = init_compile_env () in
+  env.current_func_return_label <- return_label;
+
+  (* 处理参数 *)
+  let param_pregs = [1; 2; 3; 4; 5; 6; 7; 8] in (* vregs for a0-a7 *)
+  let rec process_params params pregs =
+    match params, pregs with
+    | P name :: rest_params, preg :: rest_pregs ->
+      let offset = add_var_stack env.var_env name in
+      emit env (IR_Comment ("Param " ^ name));
+      emit env (IR_Sw (preg, offset, 0)); (* Store param from preg to stack *)
+      process_params rest_params rest_pregs
+    | [], _ -> ()
+    | _ -> failwith "Too many parameters for registers"
+  in
+  process_params func_def.params param_pregs;
+
+  (* 编译函数体 *)
+  compile_stmt env func_def.body;
+
+  emit env (IR_Label env.current_func_return_label);
+  (List.rev env.instructions, env)
+
+(* 活跃区间分析 *)
+module VRegMap = Map.Make(Int)
+type live_interval = {
+  start: int;
+  mutable end_of: int;
+}
+type live_intervals = live_interval VRegMap.t
+
+let compute_live_intervals (instrs: instruction list) : live_intervals =
+  let intervals = ref VRegMap.empty in
   
-  (* 用于收集生成的汇编代码 *)
-  let output = Buffer.create 2048 in
-  
-  (* 向输出添加一行 *)
-  let emit_line line =
-    Buffer.add_string output line;
-    Buffer.add_char output '\n'
+  let update_interval vreg idx =
+    let current =
+      try VRegMap.find vreg !intervals
+      with Not_found -> { start = idx; end_of = idx }
+    in
+    intervals := VRegMap.add vreg { current with end_of = max current.end_of idx } !intervals
   in
 
-  (* 向输出添加一个标签 *)
-  let emit_label label =
-    Buffer.add_string output label;
-    Buffer.add_string output ":\n"
-  in
-  
-  (* 向输出添加一个指令 *)
-  let emit instr =
-    Buffer.add_string output "\t";
-    Buffer.add_string output instr;
-    Buffer.add_char output '\n'
+  let process_vreg_defs idx defs =
+    List.iter (fun d ->
+      if not (VRegMap.mem d !intervals) then
+        intervals := VRegMap.add d { start = idx; end_of = idx } !intervals
+    ) defs
   in
 
-  (* 代码段 *)
-  let emit_text_section () =
-    emit_line ".text"
+  let process_vreg_uses idx uses =
+    List.iter (fun u -> update_interval u idx) uses
   in
 
-  (* 表达式求值，返回存储结果的寄存器 *)
-  let rec compile_expr env expr =
-    match expr with
-    | EInt n ->
-        emit (Printf.sprintf "li a0, %d" n);
-        A0
+  List.iteri (fun i instr ->
+    let used, defined =
+      match instr with
+      | IR_Li (d, _) -> [], [d]
+      | IR_Mv (d, s) -> [s], [d]
+      | IR_Add (d, r1, VReg r2) | IR_Sub (d, r1, VReg r2)
+      | IR_Mul (d, r1, r2) | IR_Div (d, r1, r2) | IR_Rem (d, r1, r2)
+      | IR_Slt (d, r1, r2) | IR_Sgt (d, r1, r2) -> [r1; r2], [d]
+      | IR_Add (d, r1, Imm _) | IR_Sub (d, r1, Imm _) -> [r1], [d]
+      | IR_Slli (d, s, _) | IR_Srli (d, s, _) -> [s], [d]
+      | IR_Seqz (d, s) | IR_Snez (d, s) -> [s], [d]
+      | IR_Lw (d, _, s) -> [s], [d]
+      | IR_Sw (s, _, base) -> [s; base], []
+      | IR_Beqz (s, _) | IR_Bnez (s, _) -> [s], []
+      | IR_Call _ -> [], [1]
+      | IR_Ret | IR_Label _ | IR_Comment _ -> ([], [])
+      | _ -> ([], [])
+    in
+    process_vreg_defs i defined;
+    process_vreg_uses i used;
+  ) instrs;
+
+  !intervals
+
+(* Helper to get uses and defs for the spill rewriter *)
+let get_vreg_uses_and_defs instr =
+  match instr with
+  | IR_Li (d, _) -> [], [d]
+  | IR_Mv (d, s) -> [s], [d]
+  | IR_Add (d, r1, VReg r2) | IR_Sub (d, r1, VReg r2)
+  | IR_Mul (d, r1, r2) | IR_Div (d, r1, r2) | IR_Rem (d, r1, r2)
+  | IR_Slt (d, r1, r2) | IR_Sgt (d, r1, r2) -> [r1; r2], [d]
+  | IR_Add (d, r1, Imm _) | IR_Sub (d, r1, Imm _) -> [r1], [d]
+  | IR_Slli (d, s, _) | IR_Srli (d, s, _) -> [s], [d]
+  | IR_Seqz (d, s) | IR_Snez (d, s) -> [s], [d]
+  | IR_Lw (d, _, s) -> [s], [d]
+  | IR_Sw (s, _, base) -> [s; base], []
+  | IR_Beqz (s, _) | IR_Bnez (s, _) -> [s], []
+  | IR_Call _ ->
+      (* Simplified: first 8 args passed in a0-a7, which are not allocatable. Result in a0 *)
+      [], [1] (* a0 is defined by call *)
+  | IR_Ret | IR_Label _ | IR_Comment _ -> ([], [])
+  | _ -> ([], [])
+
+(* Virtual registers for spill temps. We use negative numbers to avoid collision. *)
+let t_spill1_vreg = -1
+let t_spill2_vreg = -2
+
+let rewrite_spills instrs allocation var_env =
+  let spill_map = Hashtbl.create 16 in
+  let current_spill_offset = ref var_env.next_offset in
+
+  Hashtbl.iter (fun vreg preg_opt ->
+    if preg_opt = None then (
+      current_spill_offset := !current_spill_offset - 4;
+      Hashtbl.add spill_map vreg !current_spill_offset
+    )
+  ) allocation;
+
+  let frame_size = abs !current_spill_offset in
+
+  let rewritten_instrs = List.fold_left (fun acc_instrs instr ->
+    let uses, defs = get_vreg_uses_and_defs instr in
     
-    | EVar name ->
-        let offset = find_var env.vars name in
-        emit (Printf.sprintf "lw a0, %d(fp)" offset);
-        A0
+    let use_map = Hashtbl.create 2 in
+    let load_instrs = ref [] in
     
-    | EUnop (op, e) ->
-        let _ = compile_expr env e in (* 结果在a0中 *)
-        (match op with
-        | Neg -> emit "neg a0, a0"
-        | Not -> 
-            emit "seqz a0, a0" (* 逻辑非：如果a0=0则置1，否则置0 *)
-        | Plus -> ());
-        A0
-    
-    | EBinop (op, e1, e2) ->
-        let _ = compile_expr env e1 in
-        (* 保存e1的结果 *)
-        emit "mv t0, a0";
-        let _ = compile_expr env e2 in
-        (* 现在e2的结果在a0中，e1的结果在t0中 *)
-        (match op with
-        | Add -> emit "add a0, t0, a0"
-        | Sub -> emit "sub a0, t0, a0"
-        | Mul -> emit "mul a0, t0, a0"
-        | Div -> emit "div a0, t0, a0"
-        | Mod -> emit "rem a0, t0, a0"
-        | Eq -> 
-            emit "xor a0, t0, a0";
-            emit "seqz a0, a0"  (* 如果相等(异或结果为0)则置1 *)
-        | Neq -> 
-            emit "xor a0, t0, a0";
-            emit "snez a0, a0"  (* 如果不相等(异或结果不为0)则置1 *)
-        | Lt -> emit "slt a0, t0, a0"
-        | Le -> 
-            emit "sgt a0, t0, a0";
-            emit "seqz a0, a0"  (* 如果t0>a0则置0，否则置1 *)
-        | Gt -> emit "sgt a0, t0, a0"
-        | Ge -> 
-            emit "slt a0, t0, a0";
-            emit "seqz a0, a0"  (* 如果t0<a0则置0，否则置1 *)
-        | And ->
-            let label_false = fresh_label env "and_false" in
-            let label_end = fresh_label env "and_end" in
-            emit (Printf.sprintf "beqz t0, %s" label_false);
-            emit (Printf.sprintf "beqz a0, %s" label_false);
-            emit "li a0, 1";
-            emit (Printf.sprintf "j %s" label_end);
-            emit_label label_false;
-            emit "li a0, 0";
-            emit_label label_end
-        | Or ->
-            let label_true = fresh_label env "or_true" in
-            let label_end = fresh_label env "or_end" in
-            emit (Printf.sprintf "bnez t0, %s" label_true);
-            emit (Printf.sprintf "bnez a0, %s" label_true);
-            emit "li a0, 0";
-            emit (Printf.sprintf "j %s" label_end);
-            emit_label label_true;
-            emit "li a0, 1";
-            emit_label label_end
-        );
-        A0
-    
-    | ECall (func_name, args) ->
-        (* 保存调用者保存的寄存器 *)
-        emit "addi sp, sp, -4";
-        emit "sw ra, 0(sp)";
-        
-        (* 计算并存储参数值 *)
-        let arg_regs = [A0; A1; A2; A3; A4; A5; A6; A7] in
-        
-        (* 编译每个参数表达式，并将结果保存到对应的参数寄存器 *)
-        let rec process_args args_left reg_list offset =
-          match args_left, reg_list with
-          | [], _ -> offset
-          | arg :: rest, reg :: regs ->
-              let _ = compile_expr env arg in
-              (* 现在参数在a0，需要移到适当的参数寄存器 *)
-              if reg <> A0 then
-                emit (Printf.sprintf "mv %s, a0" (string_of_reg reg));
-              process_args rest regs offset
-          | arg :: rest, [] ->
-              (* 剩余参数通过栈传递 *)
-              let _ = compile_expr env arg in
-              emit (Printf.sprintf "sw a0, %d(sp)" offset);
-              process_args rest [] (offset - 4)
+    let add_load_for_use vreg =
+      if not (Hashtbl.mem use_map vreg) then (
+        let temp_vreg =
+            if Hashtbl.length use_map = 0 then t_spill1_vreg else t_spill2_vreg
         in
-        let _ = process_args args arg_regs (-4) in
-        
-        (* 调用函数 *)
-        emit (Printf.sprintf "call %s" func_name);
-        
-        (* 恢复ra *)
-        emit "lw ra, 0(sp)";
-        emit "addi sp, sp, 4";
-        
-        (* 结果在a0寄存器中 *)
-        A0
-  in
+        let offset = Hashtbl.find spill_map vreg in
+        load_instrs := IR_Lw (temp_vreg, offset, 0) :: !load_instrs;
+        Hashtbl.add use_map vreg temp_vreg
+      )
+    in
+    List.iter (fun u -> if Hashtbl.mem spill_map u then add_load_for_use u) uses;
 
-  (* 编译语句 *)
-  let rec compile_stmt env stmt =
-    match stmt with
-    | SEmpty ->
-        env
-    
-    | SExpr e ->
-        let _ = compile_expr env e in
-        env
-    
-    | SReturn None ->
-        emit "li a0, 0";  (* void函数返回0 *)
-        emit (Printf.sprintf "j %s" env.current_func_return_label);
-        env
-    
-    | SReturn (Some e) ->
-        let _ = compile_expr env e in
-        emit (Printf.sprintf "j %s" env.current_func_return_label);
-        env
-    
-    | SIf (cond, then_stmt, None) ->
-        let else_label = fresh_label env "else" in
-        let end_label = fresh_label env "endif" in
-        
-        (* 计算条件 *)
-        let _ = compile_expr env cond in
-        
-        (* 条件为假，跳转到else *)
-        emit (Printf.sprintf "beqz a0, %s" else_label);
-        
-        (* 编译then部分 *)
-        let env' = compile_stmt env then_stmt in
-        
-        (* 跳转到结束 *)
-        emit (Printf.sprintf "j %s" end_label);
-        
-        (* else标签 *)
-        emit_label else_label;
-        
-        (* 结束标签 *)
-        emit_label end_label;
-        
-        env'
-    
-    | SIf (cond, then_stmt, Some else_stmt) ->
-        let else_label = fresh_label env "else" in
-        let end_label = fresh_label env "endif" in
-        
-        (* 计算条件 *)
-        let _ = compile_expr env cond in
-        
-        (* 条件为假，跳转到else *)
-        emit (Printf.sprintf "beqz a0, %s" else_label);
-        
-        (* 编译then部分 *)
-        let env' = compile_stmt env then_stmt in
-        
-        (* 跳转到结束 *)
-        emit (Printf.sprintf "j %s" end_label);
-        
-        (* else标签 *)
-        emit_label else_label;
-        
-        (* 编译else部分 *)
-        let env'' = compile_stmt env' else_stmt in
-        
-        (* 结束标签 *)
-        emit_label end_label;
-        
-        env''
-    
-    | SWhile (cond, body) ->
-        let start_label = fresh_label env "while_start" in
-        let end_label = fresh_label env "while_end" in
-        
-        (* 保存旧的循环标签 *)
-        let old_loop = env.current_loop in
-        
-        (* 设置当前循环的标签 *)
-        env.current_loop <- Some (start_label, end_label);
-        
-        (* 循环开始标签 *)
-        emit_label start_label;
-        
-        (* 计算条件 *)
-        let _ = compile_expr env cond in
-        
-        (* 条件为假，跳出循环 *)
-        emit (Printf.sprintf "beqz a0, %s" end_label);
-        
-        (* 编译循环体 *)
-        let env' = compile_stmt env body in
-        
-        (* 跳回循环开始 *)
-        emit (Printf.sprintf "j %s" start_label);
-        
-        (* 循环结束标签 *)
-        emit_label end_label;
-        
-        (* 恢复旧的循环标签 *)
-        env'.current_loop <- old_loop;
-        
-        env'
-    
-    | SBreak ->
-        (match env.current_loop with
-        | None -> failwith "Break statement outside loop"
-        | Some (_, end_label) ->
-            emit (Printf.sprintf "j %s" end_label)
-        );
-        env
-    
-    | SContinue ->
-        (match env.current_loop with
-        | None -> failwith "Continue statement outside loop"
-        | Some (start_label, _) ->
-            emit (Printf.sprintf "j %s" start_label)
-        );
-        env
-    
-    | SBlock stmts ->
-        (* 为块创建新的作用域 *)
-        let env_ref = ref env in
-        
-        (* 依次编译每条语句 *)
-        List.iter (fun s -> env_ref := compile_stmt !env_ref s) stmts;
-        
-        !env_ref
-    
-    | SDeclare (name, init_expr) ->
-        (* 计算初始值 *)
-        let _ = compile_expr env init_expr in
-        
-        (* 为变量分配栈空间 *)
-        let (vars', offset) = add_var env.vars name in
-        
-        (* 将初始值存入分配的空间 *)
-        emit (Printf.sprintf "sw a0, %d(fp)" offset);
-        
-        { env with vars = vars' }
-    
-    | SAssign (name, expr) ->
-        (* 计算赋值表达式的值 *)
-        let _ = compile_expr env expr in
-        
-        (* 查找变量的栈偏移量 *)
-        let offset = find_var env.vars name in
-        
-        (* 将值存入变量 *)
-        emit (Printf.sprintf "sw a0, %d(fp)" offset);
-        
-        env
-  in
+    let def_map = Hashtbl.create 1 in
+    let store_instrs = ref [] in
+     List.iter (fun d ->
+      if Hashtbl.mem spill_map d then
+        let temp_vreg = t_spill1_vreg in
+        let offset = Hashtbl.find spill_map d in
+        store_instrs := IR_Sw (temp_vreg, offset, 0) :: !store_instrs;
+        Hashtbl.add def_map d temp_vreg
+    ) defs;
 
-  (* 编译函数定义 *)
-  let compile_func env func_def =
-    (* 函数开始标签 *)
-    emit_label func_def.name;
-    
-    (* 函数序言 *)
-    emit "addi sp, sp, -8";    (* 为fp和ra分配空间 *)
-    emit "sw fp, 4(sp)";       (* 保存调用者的帧指针 *)
-    emit "sw ra, 0(sp)";       (* 保存返回地址 *)
-    emit "mv fp, sp";          (* 设置新的帧指针 *)
-    
-    (* 计算需要的栈空间（预先为局部变量估算空间） *)
-    emit "addi sp, sp, -64";   (* 为局部变量分配64字节空间，后续可以根据需要调整 *)
-    
-    (* 创建一个函数特定的返回标签 *)
+    let map_use r = try Hashtbl.find use_map r with Not_found -> r in
+    let map_def r = try Hashtbl.find def_map r with Not_found -> r in
+    let map_op = function VReg r -> VReg(map_use r) | Imm i -> Imm i in
+
+    let rewritten_instr = match instr with
+      | IR_Li (d, i) -> IR_Li (map_def d, i)
+      | IR_Mv (d, s) -> IR_Mv (map_def d, map_use s)
+      | IR_Add (d, r1, op2) -> IR_Add (map_def d, map_use r1, map_op op2)
+      | IR_Sub (d, r1, op2) -> IR_Sub (map_def d, map_use r1, map_op op2)
+      | IR_Mul (d, r1, r2) -> IR_Mul (map_def d, map_use r1, map_use r2)
+      | IR_Div (d, r1, r2) -> IR_Div (map_def d, map_use r1, map_use r2)
+      | IR_Rem (d, r1, r2) -> IR_Rem (map_def d, map_use r1, map_use r2)
+      | IR_Slli (d, s, i) -> IR_Slli (map_def d, map_use s, i)
+      | IR_Srli (d, s, i) -> IR_Srli (map_def d, map_use s, i)
+      | IR_Seqz (d, s) -> IR_Seqz (map_def d, map_use s)
+      | IR_Snez (d, s) -> IR_Snez (map_def d, map_use s)
+      | IR_Slt (d, r1, r2) -> IR_Slt (map_def d, map_use r1, map_use r2)
+      | IR_Sgt (d, r1, r2) -> IR_Sgt (map_def d, map_use r1, map_use r2)
+      | IR_Lw (d, off, base) -> IR_Lw (map_def d, off, map_use base)
+      | IR_Sw (s, off, base) -> IR_Sw (map_use s, off, map_use base)
+      | IR_Beqz (s, l) -> IR_Beqz (map_use s, l)
+      | IR_Bnez (s, l) -> IR_Bnez (map_use s, l)
+      | IR_J s -> IR_J s
+      | IR_Call s -> IR_Call s
+      | IR_Ret -> IR_Ret
+      | other -> other
+    in
+    let final_instrs = (List.rev !load_instrs) @ [rewritten_instr] @ !store_instrs in
+    acc_instrs @ final_instrs
+  ) [] instrs in
+  
+  (rewritten_instrs, frame_size)
+
+(* 线性扫描寄存器分配 *)
+let linear_scan_allocator (intervals: live_intervals) : (vreg, preg option) Hashtbl.t =
+  let allocation = Hashtbl.create (VRegMap.cardinal intervals) in
+  let sorted_intervals = List.sort (fun (_, a) (_, b) -> compare a.start b.start) (VRegMap.bindings intervals) in
+  
+  let physical_regs = [T0; T1; T2; T3; T4; S0; S1; S2; S3; S4; S5; S6; S7; S8] in (* T5, T6 are reserved *)
+  let free_regs = ref physical_regs in
+
+  let active = ref [] in (* list of (vreg, preg, interval) *)
+
+  List.iter (fun (vreg, interval) ->
+    (* 1. 释放不活跃的寄存器 *)
+    let (still_active, expired) = List.partition (fun (_, _, i) -> i.end_of >= interval.start) !active in
+    active := still_active;
+    List.iter (fun (_, preg, _) -> free_regs := preg :: !free_regs) expired;
+
+    (* 2. 分配寄存器 *)
+    match !free_regs with
+    | preg :: rest ->
+      free_regs := rest;
+      Hashtbl.add allocation vreg (Some preg);
+      active := (vreg, preg, interval) :: !active;
+      active := List.sort (fun (_, _, a) (_, _, b) -> compare a.end_of b.end_of) !active
+    | [] ->
+      (* 3. 溢出 (Spill) *)
+      (* Standard heuristic: spill the interval in 'active' that ends latest. *)
+      (* 'active' is sorted by end_of ascending, so the last element is the one to spill. *)
+      let last_in_active = List.hd (List.rev !active) in
+      let (spill_vreg, spill_preg, spill_interval) = last_in_active in
+      
+      if spill_interval.end_of > interval.end_of then (
+        (* Spill the existing interval because it lives longer than the current one *)
+        active := List.filter (fun (v, _, _) -> v <> spill_vreg) !active;
+        Hashtbl.add allocation spill_vreg None; (* Mark as spilled *)
+        
+        (* Allocate its physical register to the current interval *)
+        Hashtbl.add allocation vreg (Some spill_preg);
+        active := (vreg, spill_preg, interval) :: !active;
+        active := List.sort (fun (_, _, a) (_, _, b) -> compare a.end_of b.end_of) !active
+      ) else (
+        (* Spill the current interval, as it ends later (or same time) *)
+        Hashtbl.add allocation vreg None
+      )
+  ) sorted_intervals;
+
+  allocation
+
+let generate_riscv program =
+  let (Program funcs) = program in
+  let final_code = Buffer.create 2048 in
+
+  Buffer.add_string final_code ".globl main\n";
+  Buffer.add_string final_code ".text\n";
+
+  List.iter (fun func_def ->
     let return_label = func_def.name ^ "_return" in
-    env.current_func_return_label <- return_label;
+    Printf.bprintf final_code "%s:\n" func_def.name;
     
-    (* 初始化新的变量环境 *)
-    let func_env = { env with vars = empty_env } in
+    let (instrs, env) = compile_func func_def return_label in
+    let intervals = compute_live_intervals instrs in
+    let allocation = linear_scan_allocator intervals in
     
-    (* 处理参数 *)
-    let param_regs = [A0; A1; A2; A3; A4; A5; A6; A7] in
-    let rec process_params params regs env offset =
-      match params, regs with
-      | [], _ -> env
-      | P name :: rest_params, reg :: rest_regs ->
-          (* 分配栈空间给参数 *)
-          let (vars', param_offset) = add_var env.vars name in
-          let new_env = { env with vars = vars' } in
-          
-          (* 将参数寄存器的值存到栈上 *)
-          emit (Printf.sprintf "sw %s, %d(fp)" (string_of_reg reg) param_offset);
-          
-          process_params rest_params rest_regs new_env offset
-      | P name :: rest_params, [] ->
-          (* 超出寄存器数量的参数是通过栈传递的 *)
-          let (vars', param_offset) = add_var env.vars name in
-          let new_env = { env with vars = vars' } in
-          
-          emit (Printf.sprintf "lw t0, %d(fp)" (8 + offset)); (* 8是为了跳过保存的fp和ra *)
-          emit (Printf.sprintf "sw t0, %d(fp)" param_offset);
-          
-          process_params rest_params [] new_env (offset + 4)
-    in
-    let env_with_params = process_params func_def.params param_regs func_env 0 in
-    
-    (* 编译函数体 *)
-    let _ = compile_stmt env_with_params func_def.body
-    in
-    
-    (* 添加函数返回标签 *)
-    emit_label return_label;
-    
-    (* 函数结尾 *)
-    emit "lw ra, 0(fp)";       (* 恢复返回地址 *)
-    emit "lw fp, 4(fp)";       (* 恢复调用者的帧指针 *)
-    emit "addi sp, fp, 8";     (* 恢复栈指针 *)
-    emit "ret";                (* 返回 *)
-    
-    (* 返回原始环境 *)
-    env
-  in
+    let (rewritten_instrs, frame_size) = rewrite_spills instrs allocation env.var_env in
+    let frame_size = if frame_size <= 8 then 16 else frame_size + (frame_size mod 16) in (* Ensure stack is 16-byte aligned, min 16 for ra/s0 *)
 
-  (* 开始生成汇编 *)
-  emit_line ".globl main";  (* main函数是全局的 *)
-  
-  (* 导入可能需要的库函数 *)
-  emit_text_section ();
-  
-  (* 编译所有函数 *)
-  let Program funcs = program in
-  let _ = List.fold_left (fun env func_def -> compile_func env func_def) env funcs in
-  
-  (* 生成最终的汇编代码 *)
-  Buffer.contents output 
+    (* Prologue *)
+    Printf.bprintf final_code "\taddi sp, sp, -%d\n" frame_size;
+    Printf.bprintf final_code "\tsw ra, %d(sp)\n" (frame_size - 4);
+    Printf.bprintf final_code "\tsw s0, %d(sp)\n" (frame_size - 8); (* Using s0 as frame pointer *)
+    Printf.bprintf final_code "\taddi s0, sp, %d\n" frame_size;
+
+    (* Special vregs for spill temps and FP/A0 *)
+    Hashtbl.add allocation 0 (Some S0); (* FP is now s0 *)
+    Hashtbl.add allocation 1 (Some A0);
+    Hashtbl.add allocation t_spill1_vreg (Some T5);
+    Hashtbl.add allocation t_spill2_vreg (Some T6);
+
+    let func_asm = string_of_ir rewritten_instrs allocation in
+    Buffer.add_string final_code func_asm;
+
+    (* Epilogue is implicitly handled by the final IR_Label and the ret in the template below,
+       but the label itself is now part of the IR stream. We just need the final ret. *)
+    Buffer.add_string final_code ("\n" ^ return_label ^ ":\n");
+    Printf.bprintf final_code "\tlw ra, %d(sp)\n" (frame_size - 4);
+    Printf.bprintf final_code "\tlw s0, %d(sp)\n" (frame_size - 8);
+    Printf.bprintf final_code "\taddi sp, sp, %d\n" frame_size;
+    Buffer.add_string final_code "\tret\n\n";
+
+  ) funcs;
+
+  Buffer.contents final_code 

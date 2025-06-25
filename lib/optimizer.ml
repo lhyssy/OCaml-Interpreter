@@ -1,5 +1,7 @@
 open Ast
 
+module VMap = Map.Make(String)
+
 (* 判断整数是否为2的幂 *)
 let is_power_of_two n =
   n > 0 && (n land (n - 1)) = 0
@@ -22,19 +24,22 @@ let eval_binop op n1 n2 =
   | Or  -> if (n1 <> 0 || n2 <> 0) then 1 else 0
 
 (* 简化表达式 *)
-let rec simplify_expr = function
+let rec simplify_expr const_env expr =
+  match expr with
   | EInt _ as c -> c
-  | EVar _ as v -> v
+  | EVar name ->
+      (try EInt (VMap.find name const_env)
+       with Not_found -> EVar name)
   | EUnop (op, e) ->
-      let se = simplify_expr e in
+      let se = simplify_expr const_env e in
       (match op, se with
        | Plus, _ -> se
        | Neg, EInt n -> EInt (-n)
        | Not, EInt n -> EInt (if n = 0 then 1 else 0)
        | _, _ -> EUnop (op, se))
   | EBinop (op, e1, e2) ->
-      let se1 = simplify_expr e1 in
-      let se2 = simplify_expr e2 in
+      let se1 = simplify_expr const_env e1 in
+      let se2 = simplify_expr const_env e2 in
       (match se1, se2 with
        | EInt n1, EInt n2 -> EInt (eval_binop op n1 n2)
        | _, _ ->
@@ -46,59 +51,258 @@ let rec simplify_expr = function
                 EBinop (Div, e, EInt n)
             | _, _, _ -> EBinop (op, se1, se2)))
   | ECall (name, args) ->
-      let sargs = List.map simplify_expr args in
+      let sargs = List.map (simplify_expr const_env) args in
       ECall (name, sargs)
 
-(* 判断表达式是否无副作用（纯 *)
-let rec is_pure_expr = function
-  | EInt _ | EVar _ -> true
-  | EUnop (_, e) -> is_pure_expr e
-  | EBinop (_, e1, e2) -> is_pure_expr e1 && is_pure_expr e2
+(* 判断表达式是否无副作用（纯） *)
+let is_pure_expr const_env e =
+ let rec check = function
+  | EInt _ -> true
+  | EVar name -> VMap.mem name const_env
+  | EUnop (_, e) -> check e
+  | EBinop (_, e1, e2) -> check e1 && check e2
   | ECall _ -> false (* 函数调用视为有副作用 *)
+ in
+ check e
 
 (* 优化语句 *)
-let rec optimize_stmt = function
-  | SEmpty -> SEmpty
+let rec optimize_stmt (stmt, const_env) =
+  match stmt with
+  | SEmpty -> (SEmpty, const_env)
   | SExpr e ->
-      let se = simplify_expr e in
-      if is_pure_expr se then SEmpty else SExpr se
-  | SReturn None -> SReturn None
-  | SReturn (Some e) -> SReturn (Some (simplify_expr e))
-  | SDeclare (name, e) -> SDeclare (name, simplify_expr e)
-  | SAssign (name, e) -> SAssign (name, simplify_expr e)
-  | SIf (cond, then_s, else_opt) ->
-      let sc = simplify_expr cond in
-      let st = optimize_stmt then_s in
-      let se_opt = Option.map optimize_stmt else_opt in
-      (match sc with
-       | EInt n -> if n <> 0 then st else (match se_opt with Some s -> s | None -> SEmpty)
-       | _ -> SIf (sc, st, se_opt))
-  | SWhile (cond, body) ->
-      let sc = simplify_expr cond in
-      let sb = optimize_stmt body in
-      (match sc with
-       | EInt n -> if n = 0 then SEmpty else SWhile (sc, sb)
-       | _ -> SWhile (sc, sb))
-  | SBlock stmts ->
-      let rec process acc = function
-        | [] -> List.rev acc
-        | s :: rest ->
-            let os = optimize_stmt s in
-            (match os with
-             | SEmpty -> process acc rest
-             | SReturn _ -> process (os :: acc) [] (* 后面的死代码删除 *)
-             | _ -> process (os :: acc) rest)
+      let se = simplify_expr const_env e in
+      if is_pure_expr const_env se then (SEmpty, const_env) else (SExpr se, const_env)
+  | SReturn None -> (SReturn None, const_env)
+  | SReturn (Some e) -> (SReturn (Some (simplify_expr const_env e)), const_env)
+  | SDeclare (name, e) ->
+      let se = simplify_expr const_env e in
+      let new_env =
+        match se with
+        | EInt n -> VMap.add name n const_env
+        | _ -> VMap.remove name const_env
       in
-      let new_stmts = process [] stmts in
-      (match new_stmts with
-       | [] -> SEmpty
-       | [single] -> single
-       | _ -> SBlock new_stmts)
-  | SBreak | SContinue as s -> s
+      (SDeclare (name, se), new_env)
+  | SAssign (name, e) ->
+      let se = simplify_expr const_env e in
+      let new_env =
+        match se with
+        | EInt n -> VMap.add name n const_env
+        | _ -> VMap.remove name const_env
+      in
+      (SAssign (name, se), new_env)
+  | SIf (cond, then_s, else_opt) ->
+      let sc = simplify_expr const_env cond in
+      (match sc with
+       | EInt n ->
+           if n <> 0 then optimize_stmt (then_s, const_env)
+           else (match else_opt with Some s -> optimize_stmt (s, const_env) | None -> (SEmpty, const_env))
+       | _ ->
+           let (st, _) = optimize_stmt (then_s, const_env) in
+           let (se_opt, _) = match else_opt with
+                             | Some s -> let (os, oe) = optimize_stmt (s, const_env) in (Some os, oe)
+                             | None -> (None, const_env)
+           in
+           (SIf (sc, st, se_opt), const_env))
+  | SWhile (cond, body) ->
+      let sc = simplify_expr const_env cond in
+      (match sc with
+       | EInt n -> if n = 0 then (SEmpty, const_env) else (SWhile (sc, fst (optimize_stmt (body, const_env))), const_env)
+       | _ -> (SWhile (sc, fst (optimize_stmt (body, const_env))), const_env))
+  | SBlock stmts ->
+      let (new_stmts, final_env) =
+        List.fold_left
+          (fun (acc_stmts, current_env) s ->
+            let (os, next_env) = optimize_stmt (s, current_env) in
+            match os with
+            | SEmpty -> (acc_stmts, next_env)
+            | SReturn _ -> (os :: acc_stmts, next_env) (* Stop processing after return *)
+            | _ -> (os :: acc_stmts, next_env)
+          )
+          ([], const_env) stmts
+      in
+      let new_stmts_rev = List.rev new_stmts in
+      let final_stmt = match new_stmts_rev with
+                       | [] -> SEmpty
+                       | [single] -> single
+                       | _ -> SBlock new_stmts_rev
+      in
+      (final_stmt, final_env)
+  | SBreak | SContinue as s -> (s, const_env)
+
+(* --- Loop Unrolling --- *)
+let unroll_loops (stmt, const_env) =
+  let rec unroll_stmt s =
+    match s with
+    | SWhile (EBinop(Le, EVar loop_var, EInt max_val), SBlock body) ->
+        let start_val_expr =
+            try EInt (VMap.find loop_var const_env)
+            with Not_found -> EInt (-1) (* Cannot determine start, do not unroll *)
+        in
+        (match start_val_expr with
+        | EInt start_val when start_val > 0 && start_val <= max_val ->
+            let unrolled_body = ref [] in
+            let current_val = ref start_val in
+            while !current_val <= max_val do
+              let iter_env = VMap.add loop_var !current_val const_env in
+              let (unrolled_iter_body, _) = optimize_stmt ((SBlock body), iter_env) in
+              unrolled_body := unrolled_iter_body :: !unrolled_body;
+              current_val := !current_val + 1
+            done;
+            SBlock (List.rev !unrolled_body)
+        | _ -> SWhile (EBinop(Le, EVar loop_var, EInt max_val), SBlock body))
+    | SIf (c, ts, es) -> SIf (c, unroll_stmt ts, Option.map unroll_stmt es)
+    | SBlock stmts -> SBlock (List.map unroll_stmt stmts)
+    | other -> other
+  in
+  unroll_stmt stmt
+
+(* --- Function Inlining --- *)
+
+(* A simple counter for generating unique variable names during inlining. *)
+let unique_id = ref 0
+let fresh_name name =
+  unique_id := !unique_id + 1;
+  "__" ^ name ^ "_" ^ (string_of_int !unique_id)
+
+(* Substitution map for renaming variables. *)
+
+let rec substitute_vars_expr (map: Ast.expr VMap.t) expr =
+  match expr with
+  | EVar v -> (try VMap.find v map with Not_found -> EVar v)
+  | EUnop (op, e) -> EUnop (op, substitute_vars_expr map e)
+  | EBinop (op, e1, e2) -> EBinop (op, substitute_vars_expr map e1, substitute_vars_expr map e2)
+  | ECall (name, args) -> ECall (name, List.map (substitute_vars_expr map) args)
+  | EInt _ as i -> i
+
+let rec substitute_vars_stmt (map: Ast.expr VMap.t) stmt =
+  let substitute_name name =
+    try match VMap.find name map with
+        | EVar new_name -> new_name
+        | _ -> name
+    with Not_found -> name
+  in
+  match stmt with
+  | SEmpty | SBreak | SContinue -> stmt
+  | SExpr e -> SExpr (substitute_vars_expr map e)
+  | SReturn (Some e) -> SReturn (Some (substitute_vars_expr map e))
+  | SReturn None -> SReturn None
+  | SDeclare (name, e) -> SDeclare (substitute_name name, substitute_vars_expr map e)
+  | SAssign (name, e) -> SAssign (substitute_name name, substitute_vars_expr map e)
+  | SIf (cond, then_s, else_s) ->
+      SIf (substitute_vars_expr map cond,
+           substitute_vars_stmt map then_s,
+           Option.map (substitute_vars_stmt map) else_s)
+  | SWhile (cond, body) ->
+      SWhile (substitute_vars_expr map cond, substitute_vars_stmt map body)
+  | SBlock stmts -> SBlock (List.map (substitute_vars_stmt map) stmts)
+
+
+let get_all_decls_stmt stmt =
+  let rec walk acc_decls s =
+    match s with
+    | SDeclare (name, _) -> VMap.add name name acc_decls
+    | SIf (_, ts, Some es) ->
+        let acc = walk acc_decls ts in
+        walk acc es
+    | SIf (_, ts, None) -> walk acc_decls ts
+    | SWhile (_, body) -> walk acc_decls body
+    | SBlock stmts -> List.fold_left walk acc_decls stmts
+    | _ -> acc_decls
+  in
+  walk VMap.empty stmt
+
+let perform_inlining (target_var: string) (func_def: func_def) (args: expr list) =
+  (* 1. Create unique names for all params and local vars of the func to be inlined. *)
+  let param_names = List.map (function P n -> n) func_def.params in
+  let local_decls = get_all_decls_stmt func_def.body in
+  
+  let subst_map = ref VMap.empty in
+  List.iter (fun p -> subst_map := VMap.add p (EVar (fresh_name p)) !subst_map) param_names;
+  VMap.iter (fun l _ -> subst_map := VMap.add l (EVar (fresh_name l)) !subst_map) local_decls;
+  
+  let get_new_name_for v = match VMap.find v !subst_map with EVar n -> n | _ -> failwith "invalid map" in
+  
+  (* 2. Create SDeclare statements to assign call-site args to the new unique param names. *)
+  let arg_setup_stmts =
+    List.map2
+      (fun p_name arg_expr -> SDeclare (get_new_name_for p_name, arg_expr))
+      param_names args
+  in
+  
+  (* 3. Substitute the body of the function. *)
+  let substituted_body = substitute_vars_stmt !subst_map func_def.body in
+
+  (* 4. In the new body, replace SReturn with SAssign to the target variable. *)
+  let rec replace_return_stmt stmt =
+    match stmt with
+    | SReturn (Some e) -> SAssign (target_var, e)
+    | SIf (c, ts, es) -> SIf (c, replace_return_stmt ts, Option.map replace_return_stmt es)
+    | SWhile (c, b) -> SWhile (c, replace_return_stmt b)
+    | SBlock stmts -> SBlock (List.map replace_return_stmt stmts)
+    | other -> other
+  in
+  let final_body = replace_return_stmt substituted_body in
+  
+  SBlock (arg_setup_stmts @ [final_body])
+
+let inline_pass (Program funcs) =
+  let func_map = Hashtbl.create (List.length funcs) in
+  List.iter (fun f -> Hashtbl.add func_map f.name f) funcs;
+
+  (* Simple heuristic: inline non-recursive functions called in assignments. *)
+  let is_recursive func =
+    let rec check_expr = function
+      | ECall (name, _) -> name = func.name
+      | EUnop (_, e) -> check_expr e
+      | EBinop (_, e1, e2) -> check_expr e1 || check_expr e2
+      | _ -> false
+    in
+    let rec check_stmt = function
+      | SExpr e | SReturn (Some e) | SDeclare (_, e) | SAssign (_, e) -> check_expr e
+      | SIf (c, ts, es) -> check_expr c || check_stmt ts || (match es with Some s -> check_stmt s | _ -> false)
+      | SWhile (c, b) -> check_expr c || check_stmt b
+      | SBlock stmts -> List.exists check_stmt stmts
+      | _ -> false
+    in
+    check_stmt func.body
+  in
+  
+  let non_recursive_funcs = Hashtbl.create (List.length funcs) in
+  List.iter (fun f -> if not (is_recursive f) then Hashtbl.add non_recursive_funcs f.name ()) funcs;
+
+  let rec inline_stmt_pass stmt =
+    match stmt with
+    | SAssign (v, ECall (name, args)) when Hashtbl.mem non_recursive_funcs name ->
+        let func_to_inline = Hashtbl.find func_map name in
+        let simplified_args = List.map (simplify_expr VMap.empty) args in
+        perform_inlining v func_to_inline simplified_args
+    | SIf (c, ts, es) -> SIf(c, inline_stmt_pass ts, Option.map inline_stmt_pass es)
+    | SWhile (c, b) -> SWhile(c, inline_stmt_pass b)
+    | SBlock stmts -> SBlock (List.map inline_stmt_pass stmts)
+    | other -> other
+  in
+  
+  let new_funcs = List.map (fun f -> { f with body = inline_stmt_pass f.body }) funcs in
+  Program new_funcs
+
 
 (* 优化函数 *)
 let optimize_func (f: func_def) : func_def =
-  { f with body = optimize_stmt f.body }
+  let (body1, env1) = optimize_stmt (f.body, VMap.empty) in
+  let body2 = unroll_loops (body1, env1) in
+  let (body3, _) = optimize_stmt (body2, VMap.empty) in
+  { f with body = body3 }
 
 let optimize_program (Program funcs) =
-  Program (List.map optimize_func funcs) 
+  let rec run_to_fixed_point p =
+    let inlined_p = inline_pass p in
+    let (Program funcs) = inlined_p in
+    let optimized_funcs = List.map optimize_func funcs in
+    let final_p = Program optimized_funcs in
+    (* Compare original program with the result of one full optimization pass *)
+    if p = final_p then
+      final_p
+    else
+      run_to_fixed_point final_p
+  in
+  run_to_fixed_point (Program funcs) 

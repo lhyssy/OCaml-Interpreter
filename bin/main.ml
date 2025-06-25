@@ -15,10 +15,12 @@ let string_of_unop = function
   | Not -> "!"
   | Plus -> "+"
 
-let string_of_binop = function
-  | Add -> "+" | Sub -> "-" | Mul -> "*" | Div -> "/" | Mod -> "%"
-  | Eq -> "==" | Neq -> "!=" | Lt -> "<" | Le -> "<=" | Gt -> ">" | Ge -> ">="
-  | And -> "&&" | Or -> "||"
+let string_of_binop =
+  let module Ast = Interpreter_lib.Ast in
+  function
+  | Ast.Add -> "+" | Ast.Sub -> "-" | Ast.Mul -> "*" | Ast.Div -> "/" | Ast.Mod -> "%"
+  | Ast.Eq -> "==" | Ast.Neq -> "!=" | Ast.Lt -> "<" | Ast.Le -> "<=" | Ast.Gt -> ">" | Ast.Ge -> ">="
+  | Ast.And -> "&&" | Ast.Or -> "||"
 
 let rec string_of_expr = function
   | EInt i -> string_of_int i
