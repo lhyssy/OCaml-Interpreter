@@ -1,6 +1,7 @@
 open Ast
 
 module VMap = Map.Make(String)
+module SSet = Set.Make(String)
 
 (* 判断整数是否为2的幂 *)
 let is_power_of_two n =
@@ -12,8 +13,8 @@ let eval_binop op n1 n2 =
   | Add -> n1 + n2
   | Sub -> n1 - n2
   | Mul -> n1 * n2
-  | Div -> if n2 = 0 then n1 / n2 else n1 / n2
-  | Mod -> if n2 = 0 then n1 mod n2 else n1 mod n2
+  | Div -> if n2 <> 0 then n1 / n2 else failwith "Division by zero"
+  | Mod -> if n2 <> 0 then n1 mod n2 else failwith "Modulo by zero"
   | Eq  -> if n1 = n2 then 1 else 0
   | Neq -> if n1 <> n2 then 1 else 0
   | Lt  -> if n1 <  n2 then 1 else 0
@@ -22,6 +23,16 @@ let eval_binop op n1 n2 =
   | Ge  -> if n1 >= n2 then 1 else 0
   | And -> if (n1 <> 0 && n2 <> 0) then 1 else 0
   | Or  -> if (n1 <> 0 || n2 <> 0) then 1 else 0
+
+(* 判断表达式是否有副作用（不纯）*)
+let expr_has_side_effects e =
+  let rec check = function
+   | ECall _ -> true (* 函数调用视为有副作用 *)
+   | EUnop (_, e1) -> check e1
+   | EBinop (_, e1, e2) -> check e1 || check e2
+   | EVar _ | EInt _ -> false (* 变量读取和常量无副作用 *)
+  in
+  check e
 
 (* 简化表达式 *)
 let rec simplify_expr const_env expr =
@@ -41,29 +52,89 @@ let rec simplify_expr const_env expr =
       let se1 = simplify_expr const_env e1 in
       let se2 = simplify_expr const_env e2 in
       (match se1, se2 with
-       | EInt n1, EInt n2 -> EInt (eval_binop op n1 n2)
+       | EInt n1, EInt n2 -> 
+           (* 常量折叠 *)
+           (try EInt (eval_binop op n1 n2)
+            with _ -> EBinop (op, se1, se2))
        | _, _ ->
-           (* 强度削减：乘/除以2的幂 -> 位移 *)
-           (match op, se1, se2 with
-            | Mul, e, EInt n when is_power_of_two n ->
-                EBinop (Mul, e, EInt n)  (* 保持不变，代码生成器可以识别 *)
-            | Div, e, EInt n when is_power_of_two n ->
-                EBinop (Div, e, EInt n)
-            | _, _, _ -> EBinop (op, se1, se2)))
+           (* 代数简化 *)
+           (match op with
+            | Add -> 
+                (match se1, se2 with
+                 | EInt 0, e -> e
+                 | e, EInt 0 -> e
+                 | EInt n1, EBinop(Add, EInt n2, e) -> EBinop(Add, EInt(n1 + n2), e) (* 合并常量: (C1 + (C2 + E)) -> ((C1+C2) + E) *)
+                 | EInt n1, EBinop(Add, e, EInt n2) -> EBinop(Add, EInt(n1 + n2), e)
+                 | EVar v1, EVar v2 when v1 = v2 -> EBinop(Mul, EInt 2, se1) (* x + x = 2 * x *)
+                 | _, _ -> EBinop (Add, se1, se2))
+            | Mul -> 
+                (match se1, se2 with
+                 | EInt 0, _ -> EInt 0
+                 | _, EInt 0 -> EInt 0
+                 | EInt 1, e -> e
+                 | e, EInt 1 -> e
+                 | EInt (-1), e -> EUnop(Neg, e)
+                 | e, EInt (-1) -> EUnop(Neg, e)
+                 | EInt n1, EBinop(Mul, EInt n2, e) -> EBinop(Mul, EInt(n1 * n2), e) (* 合并常量: (C1 * (C2 * E)) -> ((C1*C2) * E) *)
+                 | EInt n1, EBinop(Mul, e, EInt n2) -> EBinop(Mul, EInt(n1 * n2), e)
+                 | _, _ -> EBinop (Mul, se1, se2))
+            | Div -> 
+                (match se1, se2 with
+                 | EInt 0, _ -> EInt 0
+                 | e, EInt 1 -> e
+                 | e, EInt (-1) -> EUnop(Neg, e)
+                 | EInt n1, EInt n2 when n1 mod n2 = 0 -> EInt (n1 / n2) (* 除法结果为整数时直接计算 *)
+                 | _, _ -> EBinop (Div, se1, se2))
+            | Sub -> 
+                (match se1, se2 with
+                 | e, EInt 0 -> e
+                 | EInt n1, EInt n2 -> EInt (n1 - n2) (* 常量折叠 *)
+                 | EVar v1, EVar v2 when v1 = v2 -> EInt 0 (* x - x = 0 *)
+                 | _, _ -> EBinop (Sub, se1, se2))
+            | Mod ->
+                (match se1, se2 with
+                 | EInt 0, _ -> EInt 0 (* 0 % n = 0 *)
+                 | _, EInt 1 -> EInt 0 (* n % 1 = 0 *)
+                 | _, EInt (-1) -> EInt 0
+                 | EInt n1, EInt n2 when n2 <> 0 -> EInt (n1 mod n2) (* 常量折叠 *)
+                 | _, _ -> EBinop (Mod, se1, se2))
+            | Eq ->
+                (match se1, se2 with
+                 | EInt n1, EInt n2 -> EInt (if n1 = n2 then 1 else 0) (* 常量折叠 *)
+                 | EVar v1, EVar v2 when v1 = v2 -> EInt 1 (* x == x = 1 *)
+                 | _, _ -> EBinop (Eq, se1, se2))
+            | Neq ->
+                (match se1, se2 with
+                 | EInt n1, EInt n2 -> EInt (if n1 <> n2 then 1 else 0) (* 常量折叠 *)
+                 | EVar v1, EVar v2 when v1 = v2 -> EInt 0 (* x != x = 0 *)
+                 | _, _ -> EBinop (Neq, se1, se2))
+            | Lt | Le | Gt | Ge as op ->
+                (match se1, se2 with
+                 | EInt n1, EInt n2 -> EInt (eval_binop op n1 n2) (* 常量折叠 *)
+                 | EVar v1, EVar v2 when v1 = v2 -> (* 自比较优化 *)
+                   (match op with
+                    | Lt | Gt -> EInt 0 (* x < x 或 x > x 始终为假 *)
+                    | Le | Ge -> EInt 1 (* x <= x 或 x >= x 始终为真 *)
+                    | _ -> failwith "Unreachable code")
+                 | _, _ -> EBinop (op, se1, se2))
+            | And ->
+                (match se1, se2 with
+                 | EInt 0, _ | _, EInt 0 -> EInt 0 (* 0 && e 或 e && 0 = 0 *)
+                 | EInt n1, e when n1 <> 0 -> e (* 1 && e = e *)
+                 | e, EInt n2 when n2 <> 0 -> e (* e && 1 = e *)
+                 | EInt n1, EInt n2 -> EInt (if n1 <> 0 && n2 <> 0 then 1 else 0) (* 常量折叠 *)
+                 | _, _ -> EBinop (And, se1, se2))
+            | Or ->
+                (match se1, se2 with
+                 | EInt n1, _ when n1 <> 0 -> EInt 1 (* 1 || e = 1 *)
+                 | _, EInt n2 when n2 <> 0 -> EInt 1 (* e || 1 = 1 *)
+                 | EInt 0, e -> e (* 0 || e = e *)
+                 | e, EInt 0 -> e (* e || 0 = e *)
+                 | EInt n1, EInt n2 -> EInt (if n1 <> 0 || n2 <> 0 then 1 else 0) (* 常量折叠 *)
+                 | _, _ -> EBinop (Or, se1, se2))))
   | ECall (name, args) ->
       let sargs = List.map (simplify_expr const_env) args in
       ECall (name, sargs)
-
-(* 判断表达式是否无副作用（纯） *)
-let is_pure_expr const_env e =
- let rec check = function
-  | EInt _ -> true
-  | EVar name -> VMap.mem name const_env
-  | EUnop (_, e) -> check e
-  | EBinop (_, e1, e2) -> check e1 && check e2
-  | ECall _ -> false (* 函数调用视为有副作用 *)
- in
- check e
 
 (* 优化语句 *)
 let rec optimize_stmt (stmt, const_env) =
@@ -71,7 +142,7 @@ let rec optimize_stmt (stmt, const_env) =
   | SEmpty -> (SEmpty, const_env)
   | SExpr e ->
       let se = simplify_expr const_env e in
-      if is_pure_expr const_env se then (SEmpty, const_env) else (SExpr se, const_env)
+      if not (expr_has_side_effects se) then (SEmpty, const_env) else (SExpr se, const_env)
   | SReturn None -> (SReturn None, const_env)
   | SReturn (Some e) -> (SReturn (Some (simplify_expr const_env e)), const_env)
   | SDeclare (name, e) ->
@@ -128,6 +199,62 @@ let rec optimize_stmt (stmt, const_env) =
       in
       (final_stmt, final_env)
   | SBreak | SContinue as s -> (s, const_env)
+
+(* --- Dead Code Elimination --- *)
+
+(* Collect variables read in an expression *)
+let rec collect_reads_expr expr =
+  match expr with
+  | EVar name -> SSet.singleton name
+  | EInt _ -> SSet.empty
+  | EUnop (_, e) -> collect_reads_expr e
+  | EBinop (_, e1, e2) -> SSet.union (collect_reads_expr e1) (collect_reads_expr e2)
+  | ECall (_, args) -> List.fold_left (fun acc e -> SSet.union acc (collect_reads_expr e)) SSet.empty args
+
+(* Collect variables read in a statement *)
+let rec collect_reads_stmt stmt =
+  match stmt with
+  | SEmpty | SBreak | SContinue | SReturn None -> SSet.empty
+  | SExpr e | SReturn (Some e) | SDeclare (_, e) | SAssign (_, e) -> collect_reads_expr e
+  | SIf (cond, then_s, else_opt) ->
+      let used = collect_reads_expr cond in
+      let used_then = collect_reads_stmt then_s in
+      let used_else = match else_opt with Some s -> collect_reads_stmt s | None -> SSet.empty in
+      SSet.union used (SSet.union used_then used_else)
+  | SWhile (cond, body) ->
+      SSet.union (collect_reads_expr cond) (collect_reads_stmt body)
+  | SBlock stmts ->
+      List.fold_left (fun acc s -> SSet.union acc (collect_reads_stmt s)) SSet.empty stmts
+
+(* The DCE transformation pass *)
+let rec dce_stmt used_vars stmt =
+  match stmt with
+  | SDeclare (name, e) ->
+      if SSet.mem name used_vars || expr_has_side_effects e then
+        stmt
+      else
+        SEmpty
+  | SAssign (name, e) ->
+      if SSet.mem name used_vars || expr_has_side_effects e then
+        stmt
+      else
+        SEmpty
+  | SIf (cond, then_s, else_opt) ->
+      SIf (cond, dce_stmt used_vars then_s, Option.map (dce_stmt used_vars) else_opt)
+  | SWhile (cond, body) ->
+      SWhile (cond, dce_stmt used_vars body)
+  | SBlock stmts ->
+      let new_stmts = List.map (dce_stmt used_vars) stmts in
+      let filtered_stmts = List.filter (function SEmpty -> false | _ -> true) new_stmts in
+      (match filtered_stmts with
+      | [] -> SEmpty
+      | [s] -> s
+      | ss -> SBlock ss)
+  | other -> other
+
+let dce_pass stmt =
+  let used_vars = collect_reads_stmt stmt in
+  dce_stmt used_vars stmt
 
 (* --- Loop Unrolling --- *)
 let unroll_loops (stmt, const_env) =
@@ -291,7 +418,8 @@ let optimize_func (f: func_def) : func_def =
   let (body1, env1) = optimize_stmt (f.body, VMap.empty) in
   let body2 = unroll_loops (body1, env1) in
   let (body3, _) = optimize_stmt (body2, VMap.empty) in
-  { f with body = body3 }
+  let body4 = dce_pass body3 in
+  { f with body = body4 }
 
 let optimize_program (Program funcs) =
   let rec run_to_fixed_point p =

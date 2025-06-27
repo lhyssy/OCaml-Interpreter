@@ -3,6 +3,17 @@ open Ast
 let is_power_of_two n =
   n > 0 && (n land (n - 1)) = 0
 
+(* 获取2的幂次 *)
+let log2 n =
+  if n <= 0 then failwith "log2 of non-positive number"
+  else
+    let rec aux p i =
+      if p = n then i
+      else if p > n then failwith (Printf.sprintf "Not a power of 2: %d" n)
+      else aux (p * 2) (i + 1)
+    in
+    aux 1 0
+
 (* 中间表示 (IR) *)
 type vreg = int (* 虚拟寄存器 *)
 
@@ -145,7 +156,7 @@ let string_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Has
     | IR_Bnez (rs, l) -> Printf.bprintf out "\tbnez %s, %s\n" (reg rs) l
     | IR_Call s -> Printf.bprintf out "\tcall %s\n" s
     | IR_Ret -> Buffer.add_string out "\tret\n"
-  ) (List.rev instrs);
+  ) instrs;
   Buffer.contents out
   
 (* 表达式求值，返回存放结果的虚拟寄存器 *)
@@ -160,6 +171,17 @@ let rec compile_expr env expr : vreg =
       let offset = find_var_offset env.var_env name in
       emit env (IR_Comment ("Load " ^ name));
       emit env (IR_Lw (rd, offset, 0)); (* vreg 0 is FP *)
+      rd
+  | ECall (func_name, args) ->
+      let arg_vregs = List.map (compile_expr env) args in
+      let rd = fresh_vreg env in
+      emit env (IR_Comment "Setup call arguments");
+      (* a0-a7 are vregs 1-8 for now *)
+      List.iteri (fun i arg_vreg ->
+        if i < 8 then emit env (IR_Mv (i+1, arg_vreg))
+      ) arg_vregs;
+      emit env (IR_Call func_name);
+      emit env (IR_Mv (rd, 1)); (* Assume result in a0 (vreg 1) *)
       rd
   | EUnop (op, e) ->
       let rs = compile_expr env e in
@@ -177,7 +199,65 @@ let rec compile_expr env expr : vreg =
       | Plus -> rs
       )
   | EBinop (op, e1, e2) ->
+      (* 常量折叠优化: 如果两个操作数都是常量 *)
+      match e1, e2 with
+      | EInt n1, EInt n2 ->
+          (* 直接计算结果 *)
+          let rd = fresh_vreg env in
+          let value = match op with
+            | Add -> n1 + n2
+            | Sub -> n1 - n2
+            | Mul -> n1 * n2
+            | Div -> if n2 <> 0 then n1 / n2 else 1 (* 避免除零 *)
+            | Mod -> if n2 <> 0 then n1 mod n2 else 0
+            | Eq -> if n1 = n2 then 1 else 0
+            | Neq -> if n1 <> n2 then 1 else 0
+            | Lt -> if n1 < n2 then 1 else 0
+            | Le -> if n1 <= n2 then 1 else 0
+            | Gt -> if n1 > n2 then 1 else 0
+            | Ge -> if n1 >= n2 then 1 else 0
+            | And -> if n1 <> 0 && n2 <> 0 then 1 else 0
+            | Or -> if n1 <> 0 || n2 <> 0 then 1 else 0
+          in
+          emit env (IR_Li (rd, value));
+          rd
+      | _, _ ->
+          (* 不是常量表达式 *)
       let r1 = compile_expr env e1 in
+          
+          (* 检查特殊情况 *)
+          match e2 with
+          | EInt n when op = Mul && is_power_of_two n ->
+              (* 乘以2的幂优化为左移 *)
+              let rd = fresh_vreg env in
+              let shift = log2 n in
+              emit env (IR_Slli (rd, r1, shift));
+              rd
+          | EInt n when op = Div && is_power_of_two n ->
+              (* 除以2的幂优化为右移 *)
+              let rd = fresh_vreg env in
+              let shift = log2 n in
+              emit env (IR_Srli (rd, r1, shift));
+              rd
+          | EInt 0 when op = Add ->
+              (* x + 0 = x *)
+              r1
+          | EInt 0 when op = Sub ->
+              (* x - 0 = x *)
+              r1
+          | EInt 0 when op = Mul ->
+              (* x * 0 = 0 *)
+              let rd = fresh_vreg env in
+              emit env (IR_Li (rd, 0));
+              rd
+          | EInt 1 when op = Mul ->
+              (* x * 1 = x *)
+              r1
+          | EInt 1 when op = Div ->
+              (* x / 1 = x *)
+              r1
+          | _ ->
+              (* 标准情况 *)
       let r2 = compile_expr env e2 in
       let rd = fresh_vreg env in
       (match op with
@@ -226,18 +306,6 @@ let rec compile_expr env expr : vreg =
           emit env (IR_Label label_end)
       );
       rd
-  | ECall (func_name, args) ->
-      let arg_vregs = List.map (compile_expr env) args in
-      let rd = fresh_vreg env in
-      (* This is simplified. Proper call sequence is more complex *)
-      emit env (IR_Comment "Setup call arguments");
-      (* a0-a7 are vregs 1-8 for now *)
-      List.iteri (fun i arg_vreg ->
-        if i < 8 then emit env (IR_Mv (i+1, arg_vreg))
-      ) arg_vregs;
-      emit env (IR_Call func_name);
-      emit env (IR_Mv (rd, 1)); (* Assume result in a0 (vreg 1) *)
-      rd
 
 (* 编译语句 *)
 let rec compile_stmt env stmt : unit =
@@ -245,8 +313,13 @@ let rec compile_stmt env stmt : unit =
   | SEmpty -> ()
   | SExpr e -> let _ = compile_expr env e in ()
   | SReturn (Some e) ->
-      let rv = compile_expr env e in
-      emit env (IR_Mv (1, rv)); (* Move to a0 *)
+      (match e with
+      | EInt n -> 
+          emit env (IR_Li (1, n)) (* Optimization: direct load to a0 (vreg 1) *)
+      | _ -> 
+          let rv = compile_expr env e in
+          emit env (IR_Mv (1, rv)) (* Move to a0 *)
+      );
       emit env (IR_J env.current_func_return_label)
   | SReturn None ->
       emit env (IR_Li (1, 0)); (* a0 = 0 *)
@@ -319,8 +392,40 @@ let compile_func func_def return_label =
   (* 编译函数体 *)
   compile_stmt env func_def.body;
 
-  emit env (IR_Label env.current_func_return_label);
   (List.rev env.instructions, env)
+
+(* --- Peephole Optimization for IR --- *)
+
+let is_label = function
+  | IR_Label _ -> true
+  | _ -> false
+
+(*
+  Performs a single pass of peephole optimizations.
+  - Removes jump to the next label.
+  - Removes code after an unconditional jump or a return, until the next label.
+*)
+let rec peephole_optimize_ir instrs =
+  match instrs with
+  | [] -> []
+  (* Pattern 1: Redundant jump to the immediately following label. *)
+  | IR_J j_label :: (IR_Label l_label :: rest) when j_label = l_label ->
+      (IR_Label l_label) :: peephole_optimize_ir rest
+  (* Pattern 2: Unreachable code after an unconditional jump. *)
+  | (IR_J _ as jump_instr) :: next_instr :: rest when not (is_label next_instr) ->
+      peephole_optimize_ir (jump_instr :: rest) (* Remove `next_instr` and re-evaluate. *)
+  (* Pattern 3: Unreachable code after a return. *)
+  | IR_Ret :: next_instr :: rest when not (is_label next_instr) ->
+      peephole_optimize_ir (IR_Ret :: rest) (* Remove `next_instr` and re-evaluate. *)
+  | h :: t -> h :: peephole_optimize_ir t
+
+(* Runs the peephole optimization until no more changes can be made. *)
+let rec run_peephole_to_fixed_point instrs =
+  let optimized_instrs = peephole_optimize_ir instrs in
+  if optimized_instrs = instrs then
+    instrs
+  else
+    run_peephole_to_fixed_point optimized_instrs
 
 (* 活跃区间分析 *)
 module VRegMap = Map.Make(Int)
@@ -533,6 +638,7 @@ let generate_riscv program =
     Printf.bprintf final_code "%s:\n" func_def.name;
     
     let (instrs, env) = compile_func func_def return_label in
+    let instrs = run_peephole_to_fixed_point instrs in
     let intervals = compute_live_intervals instrs in
     let allocation = linear_scan_allocator intervals in
     
@@ -554,8 +660,7 @@ let generate_riscv program =
     let func_asm = string_of_ir rewritten_instrs allocation in
     Buffer.add_string final_code func_asm;
 
-    (* Epilogue is implicitly handled by the final IR_Label and the ret in the template below,
-       but the label itself is now part of the IR stream. We just need the final ret. *)
+    (* Epilogue: the return label is added here, and jumps from 'ret' statements will land here. *)
     Buffer.add_string final_code ("\n" ^ return_label ^ ":\n");
     Printf.bprintf final_code "\tlw ra, %d(sp)\n" (frame_size - 4);
     Printf.bprintf final_code "\tlw s0, %d(sp)\n" (frame_size - 8);
