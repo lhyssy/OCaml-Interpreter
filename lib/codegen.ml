@@ -41,6 +41,7 @@ type instruction =
   | IR_Snez of vreg * vreg
   | IR_Slt of vreg * vreg * vreg
   | IR_Sgt of vreg * vreg * vreg
+  | IR_Sge of vreg * vreg * vreg
   (* Memory *)
   | IR_Lw of vreg * int * vreg (* Lw rd, offset(rs1) *)
   | IR_Sw of vreg * int * vreg (* Sw rs1, offset(rd) *)
@@ -135,9 +136,14 @@ let string_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Has
   in
   List.iter (function
     | IR_Label s -> Buffer.add_string out (s ^ ":\n")
-    | IR_Comment s -> Buffer.add_string out ("\t# " ^ s ^ "\n")
-    | IR_Li (r, i) -> Printf.bprintf out "\tli %s, %d\n" (reg r) i
-    | IR_Mv (rd, rs) -> Printf.bprintf out "\tmv %s, %s\n" (reg rd) (reg rs)
+    | IR_Comment _ -> ()
+    | IR_Li (r, i) -> 
+        (* 替换 li 伪指令，对于小的立即数使用 addi，大的立即数仍然使用 li *)
+        if i >= -2048 && i <= 2047 then
+          Printf.bprintf out "\taddi %s, x0, %d\n" (reg r) i
+        else
+          Printf.bprintf out "\tli %s, %d\n" (reg r) i
+    | IR_Mv (rd, rs) -> Printf.bprintf out "\taddi %s, %s, 0\n" (reg rd) (reg rs)
     | IR_Add (rd, r1, op2) -> Printf.bprintf out "\tadd %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
     | IR_Sub (rd, r1, op2) -> Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
     | IR_Mul (rd, r1, r2) -> Printf.bprintf out "\tmul %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
@@ -145,17 +151,24 @@ let string_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Has
     | IR_Rem (rd, r1, r2) -> Printf.bprintf out "\trem %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
     | IR_Slli (rd, r1, i) -> Printf.bprintf out "\tslli %s, %s, %d\n" (reg rd) (reg r1) i
     | IR_Srli (rd, r1, i) -> Printf.bprintf out "\tsrli %s, %s, %d\n" (reg rd) (reg r1) i
-    | IR_Seqz (rd, rs) -> Printf.bprintf out "\tseqz %s, %s\n" (reg rd) (reg rs)
-    | IR_Snez (rd, rs) -> Printf.bprintf out "\tsnez %s, %s\n" (reg rd) (reg rs)
+    | IR_Seqz (rd, rs) ->
+        Printf.bprintf out "\tsub %s, %s, x0\n" (reg rd) (reg rs);
+        Printf.bprintf out "\tsltiu %s, %s, 1\n" (reg rd) (reg rd)
+    | IR_Snez (rd, rs) ->
+        Printf.bprintf out "\tsub %s, %s, x0\n" (reg rd) (reg rs);
+        Printf.bprintf out "\tsltu %s, x0, %s\n" (reg rd) (reg rd)
     | IR_Slt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
-    | IR_Sgt (rd, r1, r2) -> Printf.bprintf out "\tsgt %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Sgt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r2) (reg r1)
+    | IR_Sge (rd, r1, r2) ->
+        Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r1) (reg r2);
+        Printf.bprintf out "\txori %s, %s, 1\n" (reg rd) (reg rd)
     | IR_Lw (rd, off, rs) -> Printf.bprintf out "\tlw %s, %d(%s)\n" (reg rd) off (reg rs)
     | IR_Sw (rs, off, rd) -> Printf.bprintf out "\tsw %s, %d(%s)\n" (reg rs) off (reg rd)
-    | IR_J s -> Printf.bprintf out "\tj %s\n" s
-    | IR_Beqz (rs, l) -> Printf.bprintf out "\tbeqz %s, %s\n" (reg rs) l
-    | IR_Bnez (rs, l) -> Printf.bprintf out "\tbnez %s, %s\n" (reg rs) l
-    | IR_Call s -> Printf.bprintf out "\tcall %s\n" s
-    | IR_Ret -> Buffer.add_string out "\tret\n"
+    | IR_J s -> Printf.bprintf out "\tjal x0, %s\n" s
+    | IR_Beqz (rs, l) -> Printf.bprintf out "\tbeq %s, x0, %s\n" (reg rs) l
+    | IR_Bnez (rs, l) -> Printf.bprintf out "\tbne %s, x0, %s\n" (reg rs) l
+    | IR_Call s -> Printf.bprintf out "\tjal ra, %s\n" s
+    | IR_Ret -> Buffer.add_string out "\tjalr x0, ra, 0\n"
   ) instrs;
   Buffer.contents out
   
@@ -626,13 +639,13 @@ let linear_scan_allocator (intervals: live_intervals) : (vreg, preg option) Hash
 
   allocation
 
-let generate_riscv program =
-  let (Program funcs) = program in
-  let final_code = Buffer.create 2048 in
-
-  Buffer.add_string final_code ".globl main\n";
-  Buffer.add_string final_code ".text\n";
-
+let generate_riscv (Program funcs) =
+  let final_code = Buffer.create 4096 in
+  
+  (* 不再生成 .globl main 和 .text *)
+  (* Buffer.add_string final_code ".globl main\n";
+     Buffer.add_string final_code ".text\n"; *)
+  
   List.iter (fun func_def ->
     let return_label = func_def.name ^ "_return" in
     Printf.bprintf final_code "%s:\n" func_def.name;
@@ -665,7 +678,7 @@ let generate_riscv program =
     Printf.bprintf final_code "\tlw ra, %d(sp)\n" (frame_size - 4);
     Printf.bprintf final_code "\tlw s0, %d(sp)\n" (frame_size - 8);
     Printf.bprintf final_code "\taddi sp, sp, %d\n" frame_size;
-    Buffer.add_string final_code "\tret\n\n";
+    Buffer.add_string final_code "\tjalr x0, ra, 0\n\n";
 
   ) funcs;
 
