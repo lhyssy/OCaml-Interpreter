@@ -71,22 +71,17 @@ let string_of_preg = function
 
 (* 变量环境 *)
 type var_env = {
-  vars: (string, int) Hashtbl.t; (* 变量名 -> 栈偏移量 *)
-  mutable next_offset: int;
+  vars: (string, vreg) Hashtbl.t; (* 变量名 -> 虚拟寄存器 *)
 }
 
 let empty_var_env () = {
   vars = Hashtbl.create 16;
-  next_offset = -4;
 }
 
-let add_var_stack env name =
-  let offset = env.next_offset in
-  Hashtbl.add env.vars name offset;
-  env.next_offset <- env.next_offset - 4;
-  offset
+let add_var env name vreg =
+  Hashtbl.add env.vars name vreg
 
-let find_var_offset env name =
+let find_var env name =
   try Hashtbl.find env.vars name
   with Not_found -> failwith ("Undefined variable: " ^ name)
 
@@ -180,11 +175,7 @@ let rec compile_expr env expr : vreg =
       emit env (IR_Li (rd, n));
       rd
   | EVar name ->
-      let rd = fresh_vreg env in
-      let offset = find_var_offset env.var_env name in
-      emit env (IR_Comment ("Load " ^ name));
-      emit env (IR_Lw (rd, offset, 0)); (* vreg 0 is FP *)
-      rd
+      find_var env.var_env name
   | ECall (func_name, args) ->
       let arg_vregs = List.map (compile_expr env) args in
       let rd = fresh_vreg env in
@@ -339,14 +330,11 @@ let rec compile_stmt env stmt : unit =
       emit env (IR_J env.current_func_return_label)
   | SDeclare (name, init_expr) ->
       let init_vreg = compile_expr env init_expr in
-      let offset = add_var_stack env.var_env name in
-      emit env (IR_Comment ("Declare " ^ name));
-      emit env (IR_Sw (init_vreg, offset, 0)) (* sw init_vreg, offset(fp) *)
+      add_var env.var_env name init_vreg
   | SAssign (name, expr) ->
       let val_vreg = compile_expr env expr in
-      let offset = find_var_offset env.var_env name in
-      emit env (IR_Comment ("Assign " ^ name));
-      emit env (IR_Sw (val_vreg, offset, 0)) (* sw val_vreg, offset(fp) *)
+      let dest_vreg = find_var env.var_env name in
+      emit env (IR_Mv (dest_vreg, val_vreg))
   | SIf (cond, then_s, else_opt) ->
       let cond_vreg = compile_expr env cond in
       let else_label = fresh_label env "else" in
@@ -388,15 +376,16 @@ let compile_func func_def return_label =
   let env = init_compile_env () in
   env.current_func_return_label <- return_label;
 
-  (* 处理参数 *)
+  (* 处理参数: 将参数从物理寄存器移动到新的虚拟寄存器 *)
   let param_pregs = [1; 2; 3; 4; 5; 6; 7; 8] in (* vregs for a0-a7 *)
   let rec process_params params pregs =
     match params, pregs with
     | P name :: rest_params, preg :: rest_pregs ->
-      let offset = add_var_stack env.var_env name in
-      emit env (IR_Comment ("Param " ^ name));
-      emit env (IR_Sw (preg, offset, 0)); (* Store param from preg to stack *)
-      process_params rest_params rest_pregs
+        let param_vreg = fresh_vreg env in
+        emit env (IR_Comment ("Param " ^ name));
+        emit env (IR_Mv (param_vreg, preg)); (* Move param from preg to a new vreg *)
+        add_var env.var_env name param_vreg;
+        process_params rest_params rest_pregs
     | [], _ -> ()
     | _ -> failwith "Too many parameters for registers"
   in
@@ -518,19 +507,19 @@ let get_vreg_uses_and_defs instr =
 let t_spill1_vreg = -1
 let t_spill2_vreg = -2
 
-let rewrite_spills instrs allocation var_env =
+let rewrite_spills instrs allocation =
   let spill_map = Hashtbl.create 16 in
-  let current_spill_offset = ref var_env.next_offset in
+  let current_spill_offset = ref (-4) in
 
   Hashtbl.iter (fun vreg preg_opt ->
     if preg_opt = None then (
-      current_spill_offset := !current_spill_offset - 4;
-      Hashtbl.add spill_map vreg !current_spill_offset
+      Hashtbl.add spill_map vreg !current_spill_offset;
+      current_spill_offset := !current_spill_offset - 4
     )
   ) allocation;
 
-  let frame_size = abs !current_spill_offset in
-
+  let spill_frame_size = abs (!current_spill_offset + 4) in
+  
   let rewritten_instrs = List.fold_left (fun acc_instrs instr ->
     let uses, defs = get_vreg_uses_and_defs instr in
     
@@ -590,7 +579,7 @@ let rewrite_spills instrs allocation var_env =
     acc_instrs @ final_instrs
   ) [] instrs in
   
-  (rewritten_instrs, frame_size)
+  (rewritten_instrs, spill_frame_size)
 
 (* 线性扫描寄存器分配 *)
 let linear_scan_allocator (intervals: live_intervals) : (vreg, preg option) Hashtbl.t =
@@ -639,29 +628,64 @@ let linear_scan_allocator (intervals: live_intervals) : (vreg, preg option) Hash
 
   allocation
 
+(* 遍历AST以确定函数是否为叶子函数 (不调用其他函数) *)
+let rec is_leaf_function_body stmt =
+  match stmt with
+  | SEmpty | SReturn _ | SBreak | SContinue | SDeclare _ | SAssign _ -> true
+  | SExpr e -> is_leaf_function_expr e
+  | SIf (_, then_s, else_opt) ->
+      is_leaf_function_body then_s &&
+      (match else_opt with None -> true | Some s -> is_leaf_function_body s)
+  | SWhile (_, body) -> is_leaf_function_body body
+  | SBlock stmts -> List.for_all is_leaf_function_body stmts
+
+and is_leaf_function_expr expr =
+  match expr with
+  | EInt _ | EVar _ -> true
+  | EUnop (_, e) -> is_leaf_function_expr e
+  | EBinop (_, e1, e2) -> is_leaf_function_expr e1 && is_leaf_function_expr e2
+  | ECall _ -> false
+
 let generate_riscv (Program funcs) =
-  let final_code = Buffer.create 4096 in
-  
-  (* 不再生成 .globl main 和 .text *)
-  (* Buffer.add_string final_code ".globl main\n";
-     Buffer.add_string final_code ".text\n"; *)
+  let final_code = Buffer.create(4096) in
   
   List.iter (fun func_def ->
     let return_label = func_def.name ^ "_return" in
     Printf.bprintf final_code "%s:\n" func_def.name;
     
-    let (instrs, env) = compile_func func_def return_label in
+    let (instrs, _) = compile_func func_def return_label in
     let instrs = run_peephole_to_fixed_point instrs in
     let intervals = compute_live_intervals instrs in
     let allocation = linear_scan_allocator intervals in
     
-    let (rewritten_instrs, frame_size) = rewrite_spills instrs allocation env.var_env in
-    let frame_size = if frame_size <= 8 then 16 else frame_size + (frame_size mod 16) in (* Ensure stack is 16-byte aligned, min 16 for ra/s0 *)
+    let is_leaf = func_def.name <> "main" && is_leaf_function_body func_def.body in
+    
+    let (rewritten_instrs, spill_frame_size) = rewrite_spills instrs allocation in
+
+    (*
+      Stack frame layout:
+      - ra (if non-leaf)
+      - s0 (frame pointer)
+      - spilled virtual registers
+    *)
+    let ra_slot_size = if is_leaf then 0 else 4 in
+    let s0_slot_size = 4 in
+    let total_frame_size = spill_frame_size + ra_slot_size + s0_slot_size in
+    
+    (* Align frame size to 16 bytes *)
+    let frame_size =
+      if total_frame_size <= 16 then 16
+      else (total_frame_size + 15) / 16 * 16
+    in
+    
+    let ra_offset = frame_size - 4 in
+    let s0_offset = frame_size - 8 in
 
     (* Prologue *)
     Printf.bprintf final_code "\taddi sp, sp, -%d\n" frame_size;
-    Printf.bprintf final_code "\tsw ra, %d(sp)\n" (frame_size - 4);
-    Printf.bprintf final_code "\tsw s0, %d(sp)\n" (frame_size - 8); (* Using s0 as frame pointer *)
+    if not is_leaf then
+      Printf.bprintf final_code "\tsw ra, %d(sp)\n" ra_offset;
+    Printf.bprintf final_code "\tsw s0, %d(sp)\n" s0_offset;
     Printf.bprintf final_code "\taddi s0, sp, %d\n" frame_size;
 
     (* Special vregs for spill temps and FP/A0 *)
@@ -675,8 +699,9 @@ let generate_riscv (Program funcs) =
 
     (* Epilogue: the return label is added here, and jumps from 'ret' statements will land here. *)
     Buffer.add_string final_code ("\n" ^ return_label ^ ":\n");
-    Printf.bprintf final_code "\tlw ra, %d(sp)\n" (frame_size - 4);
-    Printf.bprintf final_code "\tlw s0, %d(sp)\n" (frame_size - 8);
+    if not is_leaf then
+      Printf.bprintf final_code "\tlw ra, %d(sp)\n" ra_offset;
+    Printf.bprintf final_code "\tlw s0, %d(sp)\n" s0_offset;
     Printf.bprintf final_code "\taddi sp, sp, %d\n" frame_size;
     Buffer.add_string final_code "\tjalr x0, ra, 0\n\n";
 
