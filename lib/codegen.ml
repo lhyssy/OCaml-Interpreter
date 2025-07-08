@@ -43,14 +43,18 @@ type instruction =
   | IR_Sgt of vreg * vreg * vreg
   | IR_Sge of vreg * vreg * vreg
   (* Memory *)
-  | IR_Lw of vreg * int * vreg (* Lw rd, offset(rs1) *)
-  | IR_Sw of vreg * int * vreg (* Sw rs1, offset(rd) *)
+  | IR_Lw of vreg * int * vreg (* Lw rd, offset(rs1) - for local variables on stack, rs1 is FP *)
+  | IR_Sw of vreg * int * vreg (* Sw rs1, offset(rd) - for local variables on stack, rd is FP *)
   (* Control Flow *)
   | IR_J of string
   | IR_Beqz of vreg * string
   | IR_Bnez of vreg * string
   | IR_Call of string
   | IR_Ret
+  (* New for stack argument passing *)
+  | IR_Adjust_SP of int (* addi sp, sp, imm *)
+  | IR_Push_Caller_Stack_Arg of vreg * int (* sw rs, offset(sp) - for caller pushing args *)
+  | IR_Load_Callee_Stack_Arg of vreg * int (* lw rd, offset(s0) - for callee loading args from above frame *)
 
 (* 真实寄存器定义 *)
 type preg =
@@ -138,7 +142,11 @@ let string_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Has
           Printf.bprintf out "\taddi %s, x0, %d\n" (reg r) i
         else
           Printf.bprintf out "\tli %s, %d\n" (reg r) i
-    | IR_Mv (rd, rs) -> Printf.bprintf out "\taddi %s, %s, 0\n" (reg rd) (reg rs)
+    | IR_Mv (rd, rs) ->
+        let physical_rd = Hashtbl.find vreg_map rd in
+        let physical_rs = Hashtbl.find vreg_map rs in
+        if physical_rd <> physical_rs then
+          Printf.bprintf out "\taddi %s, %s, 0\n" (reg rd) (reg rs)
     | IR_Add (rd, r1, op2) -> Printf.bprintf out "\tadd %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
     | IR_Sub (rd, r1, op2) -> Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
     | IR_Mul (rd, r1, r2) -> Printf.bprintf out "\tmul %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
@@ -164,6 +172,9 @@ let string_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Has
     | IR_Bnez (rs, l) -> Printf.bprintf out "\tbne %s, x0, %s\n" (reg rs) l
     | IR_Call s -> Printf.bprintf out "\tjal ra, %s\n" s
     | IR_Ret -> Buffer.add_string out "\tjalr x0, ra, 0\n"
+    | IR_Adjust_SP i -> Printf.bprintf out "\taddi sp, sp, %d\n" i
+    | IR_Push_Caller_Stack_Arg (rs, offset) -> Printf.bprintf out "\tsw %s, %d(sp)\n" (reg rs) offset
+    | IR_Load_Callee_Stack_Arg (rd, offset) -> Printf.bprintf out "\tlw %s, %d(s0)\n" (reg rd) offset
   ) instrs;
   Buffer.contents out
   
@@ -179,13 +190,38 @@ let rec compile_expr env expr : vreg =
   | ECall (func_name, args) ->
       let arg_vregs = List.map (compile_expr env) args in
       let rd = fresh_vreg env in
-      emit env (IR_Comment "Setup call arguments");
-      (* a0-a7 are vregs 1-8 for now *)
+      
+      let num_reg_args = min 8 (List.length arg_vregs) in
+      let num_stack_args = (List.length arg_vregs) - num_reg_args in
+      let stack_args_size = num_stack_args * 4 in
+
+      (* 1. 调整栈指针为栈上传递参数预留空间，并压入栈参数 (如果存在) *)
+      if num_stack_args > 0 then begin
+        emit env (IR_Adjust_SP (-stack_args_size));
+        (* 栈参数从 arg_vregs 的第 8 个元素开始，逆序压栈 (右到左) *)
+        let stack_args = List.filteri (fun i _ -> i >= 8) arg_vregs |> List.rev in
+        List.iteri (fun i arg_vreg ->
+          let offset = i * 4 in (* 偏移量相对于调整后的 sp *)
+          emit env (IR_Push_Caller_Stack_Arg (arg_vreg, offset))
+        ) stack_args;
+      end;
+
+      (* 2. 寄存器传递参数 (a0-a7) *)
       List.iteri (fun i arg_vreg ->
-        if i < 8 then emit env (IR_Mv (i+1, arg_vreg))
+        if i < 8 then
+          emit env (IR_Mv (i+1, arg_vreg)) (* a0-a7 对应 vregs 1-8 *)
       ) arg_vregs;
+
+      (* 3. 调用函数 *)
       emit env (IR_Call func_name);
-      emit env (IR_Mv (rd, 1)); (* Assume result in a0 (vreg 1) *)
+      
+      (* 4. 获取返回值 (总是在 a0, 对应 vreg 1) *)
+      emit env (IR_Mv (rd, 1)); 
+
+      (* 5. 恢复栈指针 *)
+      if num_stack_args > 0 then begin
+        emit env (IR_Adjust_SP stack_args_size);
+      end;
       rd
   | EUnop (op, e) ->
       let rs = compile_expr env e in
@@ -376,20 +412,29 @@ let compile_func func_def return_label =
   let env = init_compile_env () in
   env.current_func_return_label <- return_label;
 
-  (* 处理参数: 将参数从物理寄存器移动到新的虚拟寄存器 *)
+  (* 处理参数: 将参数从物理寄存器/栈移动到新的虚拟寄存器 *)
   let param_pregs = [1; 2; 3; 4; 5; 6; 7; 8] in (* vregs for a0-a7 *)
-  let rec process_params params pregs =
-    match params, pregs with
-    | P name :: rest_params, preg :: rest_pregs ->
+  let rec process_params params param_idx =
+    match params with
+    | P name :: rest_params ->
         let param_vreg = fresh_vreg env in
-        emit env (IR_Comment ("Param " ^ name));
-        emit env (IR_Mv (param_vreg, preg)); (* Move param from preg to a new vreg *)
+        if param_idx < 8 then begin
+            (* 寄存器参数 *)
+            let preg_vreg = List.nth param_pregs param_idx in
+            emit env (IR_Mv (param_vreg, preg_vreg));
+        end else begin
+            (* 栈参数. 偏移量相对于 s0 (帧指针) *)
+            (* 第一个栈参数 (即第9个参数，param_idx = 8) 位于 s0 向上 0 字节处 *)
+            (* param_idx = 8 => offset = 0 *)
+            (* param_idx = 9 => offset = 4 *)
+            let offset_from_fp = (param_idx - 8) * 4 in
+            emit env (IR_Load_Callee_Stack_Arg (param_vreg, offset_from_fp));
+        end;
         add_var env.var_env name param_vreg;
-        process_params rest_params rest_pregs
-    | [], _ -> ()
-    | _ -> failwith "Too many parameters for registers"
+        process_params rest_params (param_idx + 1)
+    | [] -> ()
   in
-  process_params func_def.params param_pregs;
+  process_params func_def.params 0;
 
   (* 编译函数体 *)
   compile_stmt env func_def.body;
@@ -475,6 +520,9 @@ let compute_live_intervals (instrs: instruction list) : live_intervals =
       | IR_Beqz (s, _) | IR_Bnez (s, _) -> [s], []
       | IR_Call _ -> [], [1]
       | IR_Ret | IR_Label _ | IR_Comment _ -> ([], [])
+      | IR_Adjust_SP _ -> ([], [])
+      | IR_Push_Caller_Stack_Arg (s, _) -> [s], []
+      | IR_Load_Callee_Stack_Arg (d, _) -> [], [d]
       | _ -> ([], [])
     in
     process_vreg_defs i defined;
@@ -501,7 +549,10 @@ let get_vreg_uses_and_defs instr =
       (* Simplified: first 8 args passed in a0-a7, which are not allocatable. Result in a0 *)
       [], [1] (* a0 is defined by call *)
   | IR_Ret | IR_Label _ | IR_Comment _ -> ([], [])
-  | _ -> ([], [])
+  | IR_Adjust_SP _ -> ([], [])
+  | IR_Push_Caller_Stack_Arg (s, _) -> [s], []
+  | IR_Load_Callee_Stack_Arg (d, _) -> [], [d]
+  | _ -> ([], []) (* Should not happen with exhaustive matching *)
 
 (* Virtual registers for spill temps. We use negative numbers to avoid collision. *)
 let t_spill1_vreg = -1
@@ -519,7 +570,7 @@ let rewrite_spills instrs allocation =
   ) allocation;
 
   let spill_frame_size = abs (!current_spill_offset + 4) in
-  
+
   let rewritten_instrs = List.fold_left (fun acc_instrs instr ->
     let uses, defs = get_vreg_uses_and_defs instr in
     
@@ -573,6 +624,9 @@ let rewrite_spills instrs allocation =
       | IR_J s -> IR_J s
       | IR_Call s -> IR_Call s
       | IR_Ret -> IR_Ret
+      | IR_Adjust_SP i -> IR_Adjust_SP i
+      | IR_Push_Caller_Stack_Arg (s, off) -> IR_Push_Caller_Stack_Arg (map_use s, off)
+      | IR_Load_Callee_Stack_Arg (d, off) -> IR_Load_Callee_Stack_Arg (map_def d, off)
       | other -> other
     in
     let final_instrs = (List.rev !load_instrs) @ [rewritten_instr] @ !store_instrs in
@@ -586,7 +640,8 @@ let linear_scan_allocator (intervals: live_intervals) : (vreg, preg option) Hash
   let allocation = Hashtbl.create (VRegMap.cardinal intervals) in
   let sorted_intervals = List.sort (fun (_, a) (_, b) -> compare a.start b.start) (VRegMap.bindings intervals) in
   
-  let physical_regs = [T0; T1; T2; T3; T4; S0; S1; S2; S3; S4; S5; S6; S7; S8] in (* T5, T6 are reserved *)
+  (* 移除 S0，因为它被用作帧指针FP *) 
+  let physical_regs = [T0; T1; T2; T3; T4; S1; S2; S3; S4; S5; S6; S7; S8; S9; S10; S11] in (* T5, T6 are reserved for spills *)
   let free_regs = ref physical_regs in
 
   let active = ref [] in (* list of (vreg, preg, interval) *)
@@ -649,6 +704,10 @@ and is_leaf_function_expr expr =
 let generate_riscv (Program funcs) =
   let final_code = Buffer.create(4096) in
   
+  (* 重新生成 .globl main 和 .text *)
+  Buffer.add_string final_code ".globl main\n";
+  Buffer.add_string final_code ".text\n";
+  
   List.iter (fun func_def ->
     let return_label = func_def.name ^ "_return" in
     Printf.bprintf final_code "%s:\n" func_def.name;
@@ -662,12 +721,6 @@ let generate_riscv (Program funcs) =
     
     let (rewritten_instrs, spill_frame_size) = rewrite_spills instrs allocation in
 
-    (*
-      Stack frame layout:
-      - ra (if non-leaf)
-      - s0 (frame pointer)
-      - spilled virtual registers
-    *)
     let ra_slot_size = if is_leaf then 0 else 4 in
     let s0_slot_size = 4 in
     let total_frame_size = spill_frame_size + ra_slot_size + s0_slot_size in
