@@ -175,10 +175,12 @@ let rec optimize_stmt (stmt, const_env) =
            in
            (SIf (sc, st, se_opt), const_env))
   | SWhile (cond, body) ->
-      let sc = simplify_expr const_env cond in
+      let sc = simplify_expr VMap.empty cond in (* FIX: Do not use const_env from before the loop *)
       (match sc with
-       | EInt n -> if n = 0 then (SEmpty, const_env) else (SWhile (sc, fst (optimize_stmt (body, const_env))), const_env)
-       | _ -> (SWhile (sc, fst (optimize_stmt (body, const_env))), const_env))
+       | EInt 0 -> (SEmpty, const_env)
+       | _ -> 
+          let (new_body, _) = optimize_stmt (body, VMap.empty) in
+          (SWhile (sc, new_body), VMap.empty))
   | SBlock stmts ->
       let (new_stmts, final_env) =
         List.fold_left

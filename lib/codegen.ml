@@ -101,7 +101,7 @@ type compile_env = {
 
 let init_compile_env () = {
   var_env = empty_var_env ();
-  vreg_count = 0;
+  vreg_count = 16; (* Start vreg counting from 16 to avoid collision with reserved regs (a0-a7 etc) *)
   label_count = 0;
   current_loop = None;
   current_func_return_label = "";
@@ -384,19 +384,24 @@ let rec compile_stmt env stmt : unit =
       | None -> ());
       emit env (IR_Label end_label)
   | SWhile (cond, body) ->
-      let start_label = fresh_label env "while_start" in
-      let end_label = fresh_label env "while_end" in
-      let old_loop = env.current_loop in
-      env.current_loop <- Some (start_label, end_label);
-      
-      emit env (IR_Label start_label);
-      let cond_vreg = compile_expr env cond in
-      emit env (IR_Beqz (cond_vreg, end_label));
-      compile_stmt env body;
-      emit env (IR_J start_label);
-      emit env (IR_Label end_label);
+    let start_label = fresh_label env "while_start" in
+    let continue_label = fresh_label env "while_continue" in
+    let end_label = fresh_label env "while_end" in
+    let old_loop = env.current_loop in
+    (* continue 跳转到 continue_label, break 跳转到 end_label *)
+    env.current_loop <- Some (continue_label, end_label);
 
-      env.current_loop <- old_loop
+    emit env (IR_Label start_label);
+    let cond_vreg = compile_expr env cond in
+    emit env (IR_Beqz (cond_vreg, end_label));
+
+    compile_stmt env body;
+
+    emit env (IR_Label continue_label); (* continue 跳转点 *)
+    emit env (IR_J start_label);
+    emit env (IR_Label end_label);
+
+    env.current_loop <- old_loop
   | SBreak ->
       (match env.current_loop with
       | Some (_, end_l) -> emit env (IR_J end_l)
@@ -715,7 +720,13 @@ let generate_riscv (Program funcs) =
     let (instrs, _) = compile_func func_def return_label in
     let instrs = run_peephole_to_fixed_point instrs in
     let intervals = compute_live_intervals instrs in
-    let allocation = linear_scan_allocator intervals in
+    
+    (* Separate pre-colored vregs (0-8 for args/fp) from the rest *)
+    let (_, other_vregs) =
+      VRegMap.partition (fun vreg _ -> vreg >= 0 && vreg <= 8) intervals in
+    
+    (* Allocate only the other vregs *)
+    let allocation = linear_scan_allocator other_vregs in
     
     let is_leaf = func_def.name <> "main" && is_leaf_function_body func_def.body in
     
@@ -741,9 +752,16 @@ let generate_riscv (Program funcs) =
     Printf.bprintf final_code "\tsw s0, %d(sp)\n" s0_offset;
     Printf.bprintf final_code "\taddi s0, sp, %d\n" frame_size;
 
-    (* Special vregs for spill temps and FP/A0 *)
-    Hashtbl.add allocation 0 (Some S0); (* FP is now s0 *)
+    (* Add the pre-colored vregs to the allocation table *)
+    Hashtbl.add allocation 0 (Some S0); (* FP is s0 *)
     Hashtbl.add allocation 1 (Some A0);
+    Hashtbl.add allocation 2 (Some A1);
+    Hashtbl.add allocation 3 (Some A2);
+    Hashtbl.add allocation 4 (Some A3);
+    Hashtbl.add allocation 5 (Some A4);
+    Hashtbl.add allocation 6 (Some A5);
+    Hashtbl.add allocation 7 (Some A6);
+    Hashtbl.add allocation 8 (Some A7);
     Hashtbl.add allocation t_spill1_vreg (Some T5);
     Hashtbl.add allocation t_spill2_vreg (Some T6);
 
