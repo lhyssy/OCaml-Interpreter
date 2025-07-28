@@ -1,69 +1,7 @@
-open Interpreter_lib.Ast
+open Interpreter_lib.String_of_ast
 open Interpreter_lib.Optimizer
+open Interpreter_lib.Irgen
 open Interpreter_lib.Codegen
-
-(* Helper function to convert a list of items to a string *)
-let string_of_list ?(sep=", ") f l =
-  "[" ^ (String.concat sep (List.map f l)) ^ "]"
-
-let string_of_typ = function
-  | TInt -> "int"
-  | TVoid -> "void"
-
-let string_of_unop = function
-  | Neg -> "-"
-  | Not -> "!"
-  | Plus -> "+"
-
-let string_of_binop =
-  let module Ast = Interpreter_lib.Ast in
-  function
-  | Ast.Add -> "+" | Ast.Sub -> "-" | Ast.Mul -> "*" | Ast.Div -> "/" | Ast.Mod -> "%"
-  | Ast.Eq -> "==" | Ast.Neq -> "!=" | Ast.Lt -> "<" | Ast.Le -> "<=" | Ast.Gt -> ">" | Ast.Ge -> ">="
-  | Ast.And -> "&&" | Ast.Or -> "||"
-
-let rec string_of_expr = function
-  | EInt i -> string_of_int i
-  | EVar v -> v
-  | EUnop (op, e) -> "(" ^ string_of_unop op ^ " " ^ string_of_expr e ^ ")"
-  | EBinop (op, e1, e2) -> "(" ^ string_of_expr e1 ^ " " ^ string_of_binop op ^ " " ^ string_of_expr e2 ^ ")"
-  | ECall (name, args) -> name ^ "(" ^ String.concat ", " (List.map string_of_expr args) ^ ")"
-
-let rec string_of_stmt indent = function
-  | SEmpty -> indent ^ ";"
-  | SExpr e -> indent ^ string_of_expr e ^ ";"
-  | SReturn None -> indent ^ "return;"
-  | SReturn (Some e) -> indent ^ "return " ^ string_of_expr e ^ ";"
-  | SIf (cond, then_s, else_s_opt) ->
-      let if_str = indent ^ "if (" ^ string_of_expr cond ^ ")\n" ^ string_of_stmt (indent ^ "  ") then_s in
-      if_str ^
-      (match else_s_opt with
-      | None -> ""
-      | Some else_s -> "\n" ^ indent ^ "else\n" ^ string_of_stmt (indent ^ "  ") else_s)
-  | SWhile (cond, body) ->
-      indent ^ "while (" ^ string_of_expr cond ^ ")\n" ^ string_of_stmt (indent ^ "  ") body
-  | SBlock stmts ->
-      indent ^ "{\n" ^
-      String.concat "\n" (List.map (string_of_stmt (indent ^ "  ")) stmts) ^
-      "\n" ^ indent ^ "}"
-  | SBreak -> indent ^ "break;"
-  | SContinue -> indent ^ "continue;"
-  | SDeclare (name, expr) -> indent ^ "int " ^ name ^ " = " ^ string_of_expr expr ^ ";"
-  | SAssign (name, expr) -> indent ^ name ^ " = " ^ string_of_expr expr ^ ";"
-
-let string_of_param = function
-  | P name -> "int " ^ name
-
-let string_of_func_def (f: func_def) =
-  let return_type_str = string_of_typ f.return_type in
-  let params_str = String.concat ", " (List.map string_of_param f.params) in
-  let body_str = string_of_stmt "  " f.body in
-  return_type_str ^ " " ^ f.name ^ "(" ^ params_str ^ ") {\n" ^
-  body_str ^
-  "\n}\n"
-
-let string_of_program (Program funcs) =
-  String.concat "\n" (List.map string_of_func_def funcs)
 
 let parse_input in_channel filename =
   let lexbuf = Lexing.from_channel in_channel in
@@ -82,18 +20,62 @@ let parse_input in_channel filename =
         pos.pos_fname pos.pos_lnum (pos.pos_cnum - pos.pos_bol) msg;
     exit 1
 
-let generate_output ast =
-  let asm_code = generate_riscv ast in
-  output_string stdout asm_code
+(* 命令行参数记录类型 *)
+type cli_options = {
+  mutable input : in_channel;    (* 输入通道 *)
+  mutable output : out_channel;  (* 输出通道 *)
+  mutable show_ast : bool;       (* 是否显示AST *)
+  mutable show_ir : bool;        (* 新增IR显示标志 *)
+}
 
-let () =
-  let ast = parse_input stdin "<stdin>" in
-  (* 进行优化 *)
-  let optimized_ast = optimize_program ast in
+let main () =
+  let options = {
+    input = stdin;
+    output = stdout;
+    show_ast = false;
+    show_ir = false;
+  } in
   
-  (* 输出AST信息 *)
-  if Array.length Sys.argv > 1 && Sys.argv.(1) = "-ast" then
-    print_endline (string_of_program optimized_ast)
-  else
-    (* 生成汇编代码并输出到 stdout *)
-    generate_output optimized_ast
+  (* 定义参数解析规则 *)
+  let speclist = [
+    ("-i", Arg.String (fun filename -> 
+       options.input <- open_in filename), 
+     "<file>  指定输入文件");
+    ("-o", Arg.String (fun filename -> 
+       options.output <- open_out filename), 
+     "<file>  指定输出文件");
+    ("-ast", Arg.Unit (fun () -> options.show_ast <- true), 
+     "        显示抽象语法树");
+    ("-ir", Arg.Unit (fun () -> options.show_ir <- true), 
+     "         显示中间表示")
+  ] in
+  
+  (* 解析命令行参数 *)
+  Arg.parse speclist (fun _ -> ()) "编译器使用说明：";
+  
+  (* 核心处理逻辑 *)
+  let ast = 
+    try parse_input options.input "<stdin>" 
+    with e -> 
+      close_in options.input;
+      raise e
+  in
+
+  let optimized_ast = optimize_program ast in
+  let ir_code = generate_ir optimized_ast in
+  let asm_code = generate_riscv ir_code in
+  output_string options.output asm_code;
+
+  (* 处理输出模式 *)
+  if options.show_ast then
+    Printf.printf "%s\n" (string_of_program optimized_ast);
+  if options.show_ir then
+    Printf.printf "%s\n" (string_of_ir_program ir_code);
+
+  (* 清理资源 *)
+  if options.input != stdin then close_in options.input;
+  if options.output != stdout then close_out options.output
+;;
+
+(* 启动主函数 *)
+let () = main ()

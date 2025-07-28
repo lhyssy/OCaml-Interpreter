@@ -3,10 +3,6 @@ open Ast
 module VMap = Map.Make(String)
 module SSet = Set.Make(String)
 
-(* 判断整数是否为2的幂 *)
-let is_power_of_two n =
-  n > 0 && (n land (n - 1)) = 0
-
 (* 计算二元运算结果 *)
 let eval_binop op n1 n2 =
   match op with
