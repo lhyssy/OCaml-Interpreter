@@ -47,7 +47,9 @@ let main () =
     ("-ast", Arg.Unit (fun () -> options.show_ast <- true), 
      "        显示抽象语法树");
     ("-ir", Arg.Unit (fun () -> options.show_ir <- true), 
-     "         显示中间表示")
+     "        显示中间表示");
+    ("-opt", Arg.Unit (fun () -> ()), 
+     "        启用优化程序（被忽略）")
   ] in
   
   (* 解析命令行参数 *)
