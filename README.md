@@ -5,15 +5,21 @@
 ## 项目结构
 
 - `lib/`: 编译器核心库
-  - `ast.ml`: 抽象语法树定义
   - `lexer.mll`: 词法分析器
   - `parser.mly`: 语法分析器
-  - `codegen.ml`: 代码生成器（RISC-V 汇编）
+  - `ast.ml`: 抽象语法树定义
+  - `string_of_ast.ml`：存放抽象语法树转化为字符串的函数，用于调试输出
+  - `optimizer.ml`：优化AST结构的模块
+  - `ir.ml`：中间形式（IR）的模式定义
+  - `irgen.ml`：中间形式生成器，将语法树AST转化为中间形式
+  - `codegen.ml`: 代码生成器（RISC-V 汇编），将中间形式转化为汇编
+  - `tool.ml`：其他工具
 - `bin/`: 编译器可执行文件
   - `main.ml`: 主程序
-- `test/`: 测试文件
-  - `simple.tc`: 简单的 ToyC 程序
-  - `complex.tc`: 更复杂的 ToyC 程序
+- `test/`: 测试文件，存放测试用源文件
+  - `oldtest/`：旧的，保存的旧测试文件夹
+  - `test_interpreter_project.ml`：用于批量测试的测试文件
+- `test_results/`：测试文件的编译结果
 
 ## ToyC 语言
 
@@ -42,28 +48,38 @@ dune build
 ### 使用编译器
 
 ```bash
-dune exec interpreter_project <input-file.tc> [-ast]
+dune exec interpreter_project -- [specs]
 ```
 
-参数说明：
-- `<input-file.tc>`: 输入的 ToyC 源文件
-- `-ast`: 可选参数，输出抽象语法树而不是生成汇编代码
+本项目提供可选参数specs如下：
 
-编译器会生成与输入文件同名但扩展名为 `.s` 的 RISC-V 汇编代码文件。
+- `-i <filename>`：将`filename`作为输入流
+- `-o <filename>`：将`filename`作为输出流
+- `-ast`：将解析得到的AST输出到终端
+- `-ir`：将解析得到的IR输出到终端
+- `-opt`：启用优化程序（被忽略）
+
+在默认无参数情况下，程序将从标准输入流中读取文件，并输出到标准输出流中，但是您可以使用参数或改变输入输出流的方法生成生成与输入文件同名但扩展名为 `.s` 的 RISC-V 汇编代码文件。
 
 ### 示例
 
-编译简单的测试文件：
+如下代码为默认的结构，从标准输入流读取，并输出到标准输出流
 
 ```bash
-dune exec interpreter_project test/simple.tc
+dune exec interpreter_project
 ```
 
-输出文件将是 `test/simple.s`。
+如下代码从文件中读取并且读出到文件
+
+```bash
+dune exec interpreter_project -- -i test/test.tc -o test_results/res.s
+```
+
+
 
 ## 代码生成
 
-代码生成器 (`codegen.ml`) 将抽象语法树转换为 RISC-V 汇编代码。主要功能包括：
+中间形式生成器(`irgen.ml`)将抽象语法树AST转换为中间形式IR，代码生成器 (`codegen.ml`) 将中间形式IR转换为 RISC-V 汇编代码。这些模块的主要功能包括：
 
 1. 寄存器分配：使用固定的寄存器分配方案
 2. 栈帧管理：为局部变量和函数调用分配栈空间

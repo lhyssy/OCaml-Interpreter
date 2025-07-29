@@ -1,2 +1,4 @@
 (test
- (name test_interpreter_project))
+ (name test_interpreter_project)
+ (libraries interpreter_lib)
+)
