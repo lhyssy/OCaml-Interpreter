@@ -3,6 +3,16 @@ open Ast
 module VMap = Map.Make(String)
 module SSet = Set.Make(String)
 
+type env_stack = int VMap.t list
+let rec lookup_var (stack: env_stack) (name: string) =
+  match stack with
+  | [] -> None
+  | env :: rest ->
+      match VMap.find_opt name env with
+      | Some v -> Some v
+      | None -> lookup_var rest name
+  ;;
+
 (* 计算二元运算结果 *)
 let eval_binop op n1 n2 =
   match op with
@@ -31,22 +41,25 @@ let expr_has_side_effects e =
   check e
 
 (* 简化表达式 *)
-let rec simplify_expr const_env expr =
+let rec simplify_expr stack_env expr =
   match expr with
   | EInt _ as c -> c
   | EVar name ->
-      (try EInt (VMap.find name const_env)
-       with Not_found -> EVar name)
+    (
+      match lookup_var stack_env name with
+      | Some v -> EInt v (* 如果变量在栈中找到，返回其值 *)
+      | None -> EVar name (* 否则保持变量名不变, 可能是未定义的变量 *)
+    )
   | EUnop (op, e) ->
-      let se = simplify_expr const_env e in
+      let se = simplify_expr stack_env e in
       (match op, se with
        | Plus, _ -> se
        | Neg, EInt n -> EInt (-n)
        | Not, EInt n -> EInt (if n = 0 then 1 else 0)
        | _, _ -> EUnop (op, se))
   | EBinop (op, e1, e2) ->
-      let se1 = simplify_expr const_env e1 in
-      let se2 = simplify_expr const_env e2 in
+      let se1 = simplify_expr stack_env e1 in
+      let se2 = simplify_expr stack_env e2 in
       (match se1, se2 with
        | EInt n1, EInt n2 -> 
            (* 常量折叠 *)
@@ -129,7 +142,7 @@ let rec simplify_expr const_env expr =
                  | EInt n1, EInt n2 -> EInt (if n1 <> 0 || n2 <> 0 then 1 else 0) (* 常量折叠 *)
                  | _, _ -> EBinop (Or, se1, se2))))
   | ECall (name, args) ->
-      let sargs = List.map (simplify_expr const_env) args in
+      let sargs = List.map (simplify_expr stack_env) args in
       ECall (name, sargs)
 
 (* 优化语句 *)
@@ -143,20 +156,28 @@ let rec optimize_stmt (stmt, const_env) =
   | SReturn (Some e) -> (SReturn (Some (simplify_expr const_env e)), const_env)
   | SDeclare (name, e) ->
       let se = simplify_expr const_env e in
-      let new_env =
+      let new_top = 
         match se with
-        | EInt n -> VMap.add name n const_env
-        | _ -> VMap.remove name const_env
+        | EInt n -> VMap.add name n (List.hd const_env)
+        | _ -> VMap.remove name (List.hd const_env)
       in
-      (SDeclare (name, se), new_env)
-  | SAssign (name, e) ->
-      let se = simplify_expr const_env e in
-      let new_env =
-        match se with
-        | EInt n -> VMap.add name n const_env
-        | _ -> VMap.remove name const_env
-      in
-      (SAssign (name, se), new_env)
+      (SDeclare (name, se), (new_top :: List.tl const_env))
+  | SAssign (name, expr) ->
+    let se = simplify_expr const_env expr in
+    let rec update_stack s =
+      match s with
+      | [] -> [] (* 未找到变量 *)
+      | env::rest ->
+        if VMap.mem name env then
+          let new_env = 
+            match se with
+            | EInt n -> VMap.add name n env
+            | _ -> VMap.remove name env
+          in new_env :: rest
+        else 
+          env :: update_stack rest
+    in
+    (SAssign (name, se), update_stack const_env)
   | SIf (cond, then_s, else_opt) ->
       let sc = simplify_expr const_env cond in
       (match sc with
@@ -171,14 +192,15 @@ let rec optimize_stmt (stmt, const_env) =
            in
            (SIf (sc, st, se_opt), const_env))
   | SWhile (cond, body) ->
-      let sc = simplify_expr VMap.empty cond in (* FIX: Do not use const_env from before the loop *)
+      (* Didn't know how to specify, so remain [VMap.empty]*)
+      let sc = simplify_expr [VMap.empty] cond in (* FIX: Do not use const_env from before the loop *)
       (match sc with
        | EInt 0 -> (SEmpty, const_env)
        | _ -> 
-          let (new_body, _) = optimize_stmt (body, VMap.empty) in
-          (SWhile (sc, new_body), VMap.empty))
+          let (new_body, _) = optimize_stmt (body, [VMap.empty]) in
+          (SWhile (sc, new_body), [VMap.empty]))
   | SBlock stmts ->
-      let (new_stmts, final_env) =
+      let (new_stmts, new_env) =
         List.fold_left
           (fun (acc_stmts, current_env) s ->
             let (os, next_env) = optimize_stmt (s, current_env) in
@@ -187,7 +209,12 @@ let rec optimize_stmt (stmt, const_env) =
             | SReturn _ -> (os :: acc_stmts, next_env) (* Stop processing after return *)
             | _ -> (os :: acc_stmts, next_env)
           )
-          ([], const_env) stmts
+          ([], (VMap.empty)::const_env) stmts
+      in
+      let final_env = 
+        match new_env with 
+        | _::parent_stack -> parent_stack  (* 弹出当前作用域 *)
+        | [] -> []
       in
       let new_stmts_rev = List.rev new_stmts in
       let final_stmt = match new_stmts_rev with
@@ -255,31 +282,37 @@ let dce_pass stmt =
   dce_stmt used_vars stmt
 
 (* --- Loop Unrolling --- *)
-let unroll_loops (stmt, const_env) =
+let unroll_loops (stmt, env_stack) = (* 参数改为env_stack *)
   let rec unroll_stmt s =
     match s with
     | SWhile (EBinop(Le, EVar loop_var, EInt max_val), SBlock body) ->
-        let start_val_expr =
-            try EInt (VMap.find loop_var const_env)
-            with Not_found -> EInt (-1) (* Cannot determine start, do not unroll *)
+        let start_val = 
+          match lookup_var env_stack loop_var with
+          | Some n when n > 0 && n <= max_val -> n
+          | _ -> -1 (* 无法展开 *)
         in
-        (match start_val_expr with
-        | EInt start_val when start_val > 0 && start_val <= max_val ->
-            let unrolled_body = ref [] in
-            let current_val = ref start_val in
-            while !current_val <= max_val do
-              let iter_env = VMap.add loop_var !current_val const_env in
-              let (unrolled_iter_body, _) = optimize_stmt ((SBlock body), iter_env) in
-              unrolled_body := unrolled_iter_body :: !unrolled_body;
-              current_val := !current_val + 1
-            done;
-            SBlock (List.rev !unrolled_body)
-        | _ -> SWhile (EBinop(Le, EVar loop_var, EInt max_val), SBlock body))
+        if start_val > 0 then
+          let unrolled_body = ref [] in
+          let current_val = ref start_val in
+          while !current_val <= max_val do
+            (* 创建带新作用域的栈 *)
+            let iter_stack = 
+              VMap.singleton loop_var !current_val :: env_stack 
+            in
+            let (unrolled_iter_body, _) = 
+              optimize_stmt (SBlock body, iter_stack) 
+            in
+            unrolled_body := unrolled_iter_body :: !unrolled_body;
+            current_val := !current_val + 1
+          done;
+          SBlock (List.rev !unrolled_body)
+        else s
     | SIf (c, ts, es) -> SIf (c, unroll_stmt ts, Option.map unroll_stmt es)
     | SBlock stmts -> SBlock (List.map unroll_stmt stmts)
     | other -> other
   in
   unroll_stmt stmt
+
 
 (* --- Function Inlining --- *)
 
@@ -399,7 +432,7 @@ let inline_pass (Program funcs) =
     match stmt with
     | SAssign (v, ECall (name, args)) when Hashtbl.mem non_recursive_funcs name ->
         let func_to_inline = Hashtbl.find func_map name in
-        let simplified_args = List.map (simplify_expr VMap.empty) args in
+        let simplified_args = List.map (simplify_expr [VMap.empty]) args in
         perform_inlining v func_to_inline simplified_args
     | SIf (c, ts, es) -> SIf(c, inline_stmt_pass ts, Option.map inline_stmt_pass es)
     | SWhile (c, b) -> SWhile(c, inline_stmt_pass b)
@@ -413,9 +446,9 @@ let inline_pass (Program funcs) =
 
 (* 优化函数 *)
 let optimize_func (f: func_def) : func_def =
-  let (body1, env1) = optimize_stmt (f.body, VMap.empty) in
+  let (body1, env1) = optimize_stmt (f.body, [VMap.empty]) in
   let body2 = unroll_loops (body1, env1) in
-  let (body3, _) = optimize_stmt (body2, VMap.empty) in
+  let (body3, _) = optimize_stmt (body2, [VMap.empty]) in
   let body4 = dce_pass body3 in
   { f with body = body4 }
 

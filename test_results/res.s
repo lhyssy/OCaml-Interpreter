@@ -1,34 +1,43 @@
 .globl main
 .text
+fact:
+	addi sp, sp, -16
+	sw s0, 8(sp)
+	addi s0, sp, 16
+	addi t0, a0, 0
+	addi t1, x0, 1
+	slt t2, t1, t0
+	sub t3, t2, x0
+	sltiu t3, t3, 1
+	beq t3, x0, else_0
+	addi a0, x0, 1
+	jal x0, fact_return
+else_0:
+	addi t3, x0, 1
+	sub t2, t0, t3
+	addi a0, t2, 0
+	jal ra, fact
+	addi t2, a0, 0
+	mul t3, t0, t2
+	addi a0, t3, 0
+	jal x0, fact_return
+endif_1:
+
+fact_return:
+	lw s0, 8(sp)
+	addi sp, sp, 16
+	jalr x0, ra, 0
+
 main:
 	addi sp, sp, -16
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	addi t0, x0, 0
-	addi t1, x0, 0
-while_start_0:
-	addi t2, x0, 5
-	slt t3, t0, t2
-	beq t3, x0, while_end_2
-	addi t3, x0, 1
-	add t2, t0, t3
-	addi t0, t2, 0
-	addi t2, x0, 3
-	sub t3, t0, t2
-	sub t0, t3, x0
-	sltiu t0, t0, 1
-	beq t0, x0, else_3
-	jal x0, while_continue_1
-else_3:
-endif_4:
-	addi t0, x0, 1
-	add t3, t1, t0
-	addi t1, t3, 0
-while_continue_1:
-	jal x0, while_start_0
-while_end_2:
-	addi a0, t1, 0
+	addi t0, x0, 5
+	addi a0, t0, 0
+	jal ra, fact
+	addi t0, a0, 0
+	addi a0, t0, 0
 	jal x0, main_return
 
 main_return:

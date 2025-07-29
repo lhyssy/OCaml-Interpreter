@@ -101,7 +101,15 @@ let compute_live_intervals (instrs: instruction list) : live_intervals =
   in
 
   let process_vreg_uses idx uses =
-    List.iter (fun u -> update_interval u idx) uses
+    List.iter (fun u ->
+    try
+      update_interval u idx;
+      let current = VRegMap.find u !intervals in
+      (* 将结束点扩展到下个定义点+1 *)
+      let new_end = max current.end_of (idx + 2) in 
+      intervals := VRegMap.add u { current with end_of = new_end } !intervals
+    with Not_found -> ()
+  ) uses
   in
 
   List.iteri (fun i instr ->
@@ -248,7 +256,7 @@ let linear_scan_allocator (intervals: live_intervals) : (vreg, preg option) Hash
 
   List.iter (fun (vreg, interval) ->
     (* 1. 释放不活跃的寄存器 *)
-    let (still_active, expired) = List.partition (fun (_, _, i) -> i.end_of >= interval.start) !active in
+    let (still_active, expired) = List.partition (fun (_, _, i) -> i.end_of > interval.start) !active in
     active := still_active;
     List.iter (fun (_, preg, _) -> free_regs := preg :: !free_regs) expired;
 

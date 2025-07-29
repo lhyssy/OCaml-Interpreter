@@ -3,27 +3,49 @@ open Ir
 open Tool
 
 (* 变量环境 *)
-(* 需要改变成以list嵌套的哈希表*)
+(* 变量环境 *)
 type var_env = {
-  vars: (string, vreg) Hashtbl.t; (* 变量名 -> 虚拟寄存器 *)
+  vars: (string, vreg) Hashtbl.t list; (* 变量名 -> 虚拟寄存器 *)
 }
 
 let empty_var_env () = {
-  vars = Hashtbl.create 16;
+  vars = [Hashtbl.create 16];
 }
 
 let add_var env name vreg =
-  Hashtbl.add env.vars name vreg
+  match env.vars with
+  | [] -> failwith("Add var when in null env")
+  | h::_ -> 
+      Hashtbl.add h name vreg; 
+      env  (* 返回更新后的环境 *)
+;;
 
 let find_var env name =
-  try Hashtbl.find env.vars name
-  with Not_found -> failwith ("Undefined variable: " ^ name)
+  let rec find_vars vars name = 
+    match vars with
+    | [] -> failwith ("Undefined variable: " ^ name)
+    | h::t -> 
+      match (Hashtbl.find_opt h name) with
+      | None -> find_vars t name
+      | Some x -> x
+  in
+  find_vars env.vars name
+;;
+
+let in_var env =
+  { vars = (Hashtbl.create 16) :: env.vars }
+;;
+
+let out_var env =
+  match env.vars with
+  | [] -> failwith("Out_var when in null env")
+  | _::t -> { vars = t }
+;;
 
 (* 编译器环境 *)
 type compile_env = {
-  var_env: var_env;
+  mutable var_env: var_env;
   mutable vreg_count: int;
-  mutable label_count: int;
   mutable current_loop: (string * string) option;
   mutable current_func_return_label: string;
   mutable instructions: instruction list;
@@ -32,21 +54,24 @@ type compile_env = {
 let init_compile_env () = {
   var_env = empty_var_env ();
   vreg_count = 16; (* Start vreg counting from 16 to avoid collision with reserved regs (a0-a7 etc) *)
-  label_count = 0;
   current_loop = None;
   current_func_return_label = "";
   instructions = [];
 }
+
+(* label_count 移动到程序外以防止标签重叠 *)
+let label_count = ref 0;;
 
 let fresh_vreg env =
   let v = env.vreg_count in
   env.vreg_count <- v + 1;
   v
 
-let fresh_label env prefix =
-  let l = env.label_count in
-  env.label_count <- l + 1;
+let fresh_label prefix =
+  let l = !label_count in
+  label_count:= l + 1;
   prefix ^ "_" ^ string_of_int l
+;;
 
 let emit env instr =
   env.instructions <- instr :: env.instructions
@@ -198,8 +223,8 @@ let rec compile_expr env expr : vreg =
           emit env (IR_Slt (t, r1, r2));
           emit env (IR_Seqz (rd, t))
       | And ->
-          let label_false = fresh_label env "and_false" in
-          let label_end = fresh_label env "and_end" in
+          let label_false = fresh_label  "and_false" in
+          let label_end = fresh_label  "and_end" in
           emit env (IR_Beqz (r1, label_false));
           emit env (IR_Beqz (r2, label_false));
           emit env (IR_Li (rd, 1));
@@ -208,8 +233,8 @@ let rec compile_expr env expr : vreg =
           emit env (IR_Li (rd, 0));
           emit env (IR_Label label_end)
       | Or ->
-          let label_true = fresh_label env "or_true" in
-          let label_end = fresh_label env "or_end" in
+          let label_true = fresh_label  "or_true" in
+          let label_end = fresh_label  "or_end" in
           emit env (IR_Bnez (r1, label_true));
           emit env (IR_Bnez (r2, label_true));
           emit env (IR_Li (rd, 0));
@@ -239,15 +264,15 @@ let rec compile_stmt env stmt : unit =
       emit env (IR_J env.current_func_return_label)
   | SDeclare (name, init_expr) ->
       let init_vreg = compile_expr env init_expr in
-      add_var env.var_env name init_vreg
+      env.var_env <- add_var env.var_env name init_vreg;
   | SAssign (name, expr) ->
       let val_vreg = compile_expr env expr in
       let dest_vreg = find_var env.var_env name in
       emit env (IR_Mv (dest_vreg, val_vreg))
   | SIf (cond, then_s, else_opt) ->
       let cond_vreg = compile_expr env cond in
-      let else_label = fresh_label env "else" in
-      let end_label = fresh_label env "endif" in
+      let else_label = fresh_label "else" in
+      let end_label = fresh_label "endif" in
       emit env (IR_Beqz (cond_vreg, else_label));
       compile_stmt env then_s;
       emit env (IR_J end_label);
@@ -257,9 +282,9 @@ let rec compile_stmt env stmt : unit =
       | None -> ());
       emit env (IR_Label end_label)
   | SWhile (cond, body) ->
-    let start_label = fresh_label env "while_start" in
-    let continue_label = fresh_label env "while_continue" in
-    let end_label = fresh_label env "while_end" in
+    let start_label = fresh_label  "while_start" in
+    let continue_label = fresh_label  "while_continue" in
+    let end_label = fresh_label  "while_end" in
     let old_loop = env.current_loop in
     (* continue 跳转到 continue_label, break 跳转到 end_label *)
     env.current_loop <- Some (continue_label, end_label);
@@ -283,7 +308,11 @@ let rec compile_stmt env stmt : unit =
       (match env.current_loop with
       | Some (start_l, _) -> emit env (IR_J start_l)
       | None -> failwith "continue outside loop")
-  | SBlock stmts -> List.iter (compile_stmt env) stmts
+  | SBlock stmts -> 
+    env.var_env <- in_var env.var_env;
+    List.iter (compile_stmt env) stmts;
+    env.var_env <- out_var env.var_env;
+;;
 
 (* 编译一个函数 *)
 let compile_func (func_def: func_def) return_label =
@@ -308,7 +337,7 @@ let compile_func (func_def: func_def) return_label =
             let offset_from_fp = (param_idx - 8) * 4 in
             emit env (IR_Load_Callee_Stack_Arg (param_vreg, offset_from_fp));
         end;
-        add_var env.var_env name param_vreg;
+        env.var_env <- add_var env.var_env name param_vreg;
         process_params rest_params (param_idx + 1)
     | [] -> ()
   in
@@ -437,7 +466,7 @@ let string_of_inst_list li =
 ;;
 
 let string_of_ir_program (Program_ir ir_program) = 
-  String.concat "\n" (
+  String.concat "\n\n" (
     List.map (
       fun func_ir ->
         func_ir.name ^ ":\n" ^ (string_of_inst_list func_ir.body)
