@@ -55,6 +55,8 @@ let test_file filename =
   let build_dir = Sys.getenv "PWD" in  (* 构建目录 *)
   Filename.concat build_dir ("test_results/" ^ filename ^ ".s") in
 
+  reset_label_count ();
+
   let in_channel = open_in in_filepath in
   let out_channel = open_out out_filepath in
   let ast = parse_input in_channel filename in

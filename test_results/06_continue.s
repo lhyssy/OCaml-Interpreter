@@ -7,10 +7,10 @@ main:
 	addi s0, sp, 16
 	addi t0, x0, 0
 	addi t1, x0, 0
-while_start_5:
+while_start_0:
 	addi t2, x0, 5
 	slt t3, t0, t2
-	beq t3, x0, while_end_7
+	beq t3, x0, while_end_2
 	addi t2, x0, 1
 	add t3, t0, t2
 	addi t0, t3, 0
@@ -18,16 +18,16 @@ while_start_5:
 	sub t3, t0, t2
 	sub t4, t3, x0
 	sltiu t4, t4, 1
-	beq t4, x0, else_8
-	jal x0, while_continue_6
-else_8:
-endif_9:
+	beq t4, x0, else_3
+	jal x0, while_continue_1
+else_3:
+endif_4:
 	addi t4, x0, 1
 	add t3, t1, t4
 	addi t1, t3, 0
-while_continue_6:
-	jal x0, while_start_5
-while_end_7:
+while_continue_1:
+	jal x0, while_start_0
+while_end_2:
 	addi a0, t1, 0
 	jal x0, main_return
 

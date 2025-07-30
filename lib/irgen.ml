@@ -62,11 +62,17 @@ let init_compile_env () = {
 (* label_count 移动到程序外以防止标签重叠 *)
 let label_count = ref 0;;
 
+let reset_label_count () =
+  label_count := 0
+
+(* 获取一个新的虚拟寄存器 *)
 let fresh_vreg env =
   let v = env.vreg_count in
   env.vreg_count <- v + 1;
   v
+;;
 
+(* 获取一个新的标签 *)
 let fresh_label prefix =
   let l = !label_count in
   label_count:= l + 1;
@@ -385,8 +391,14 @@ let rec run_peephole_to_fixed_point instrs =
 (* 遍历AST以确定函数是否为叶子函数 (不调用其他函数) *)
 let rec is_leaf_function_body stmt =
   match stmt with
-  | SEmpty | SReturn _ | SBreak | SContinue | SDeclare _ | SAssign _ -> true
+  | SEmpty | SBreak | SContinue -> true
   | SExpr e -> is_leaf_function_expr e
+  | SReturn exp_opt ->
+      (match exp_opt with
+      | Some e -> is_leaf_function_expr e
+      | None -> true)
+  | SDeclare (_, expr) -> is_leaf_function_expr expr
+  | SAssign (_, expr) -> is_leaf_function_expr expr
   | SIf (_, then_s, else_opt) ->
       is_leaf_function_body then_s &&
       (match else_opt with None -> true | Some s -> is_leaf_function_body s)
@@ -423,6 +435,7 @@ let generate_ir (Program funcs) =
 let string_of_operand = function
   | VReg n -> Printf.sprintf "v%d" n
   | Imm i -> string_of_int i
+;;
 
 let string_of_instruction = function
   | IR_Label lbl -> lbl ^ ":"
@@ -469,6 +482,7 @@ let string_of_ir_program (Program_ir ir_program) =
   String.concat "\n\n" (
     List.map (
       fun func_ir ->
+        (if (func_ir.is_leaf) then "(leaf)" else "") ^
         func_ir.name ^ ":\n" ^ (string_of_inst_list func_ir.body)
     ) 
     ir_program
