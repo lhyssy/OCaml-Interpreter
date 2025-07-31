@@ -1,10 +1,14 @@
 .globl main
 .text
 fibonacci:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, x0, 1
 	slt s3, s2, s1
@@ -30,16 +34,25 @@ else_0:
 endif_1:
 
 fibonacci_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 gcd:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	sw s5, 4(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, x0, 0
@@ -60,14 +73,20 @@ endif_3:
 	jal x0, gcd_return
 
 gcd_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	lw s5, 4(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 isPrime:
 	addi sp, sp, -16
 	sw s0, 8(sp)
+	sw s1, 4(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, x0, 1
@@ -154,6 +173,7 @@ while_end_14:
 
 isPrime_return:
 	lw s0, 8(sp)
+	lw s1, 4(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
@@ -184,10 +204,15 @@ factorial_return:
 	jalr x0, ra, 0
 
 combination:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	sw s5, 4(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	slt s3, s1, s2
@@ -231,14 +256,21 @@ endif_27:
 	jal x0, combination_return
 
 combination_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	lw s5, 4(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 power:
 	addi sp, sp, -16
 	sw s0, 8(sp)
+	sw s1, 4(sp)
+	sw s2, 0(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, a1, 0
@@ -271,13 +303,19 @@ while_end_30:
 
 power_return:
 	lw s0, 8(sp)
+	lw s1, 4(sp)
+	lw s2, 0(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
 complexFunction:
-	addi sp, sp, -16
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	addi s0, sp, 32
 	addi t0, a0, 0
 	addi t1, a1, 0
 	addi t2, a2, 0
@@ -481,13 +519,18 @@ while_end_61:
 	jal x0, complexFunction_return
 
 complexFunction_return:
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 shortCircuit:
 	addi sp, sp, -16
 	sw s0, 8(sp)
+	sw s1, 4(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, a1, 0
@@ -527,12 +570,15 @@ endif_77:
 
 shortCircuit_return:
 	lw s0, 8(sp)
+	lw s1, 4(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
 nestedLoopsAndConditions:
 	addi sp, sp, -16
 	sw s0, 8(sp)
+	sw s1, 4(sp)
+	sw s2, 0(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, x0, 0
@@ -598,14 +644,22 @@ while_end_80:
 
 nestedLoopsAndConditions_return:
 	lw s0, 8(sp)
+	lw s1, 4(sp)
+	lw s2, 0(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
 func1:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	sw s5, 4(sp)
+	sw s6, 0(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, a2, 0
@@ -630,16 +684,26 @@ else_92:
 endif_93:
 
 func1_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	lw s5, 4(sp)
+	lw s6, 0(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 func2:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	beq s2, x0, else_94
@@ -657,16 +721,25 @@ else_94:
 endif_95:
 
 func2_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 func3:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	sw s5, 4(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, x0, 0
@@ -690,9 +763,14 @@ else_96:
 endif_97:
 
 func3_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	lw s5, 4(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 func4:
@@ -777,10 +855,22 @@ func7_return:
 	jalr x0, ra, 0
 
 nestedCalls:
-	addi sp, sp, -32
-	sw ra, 28(sp)
-	sw s0, 24(sp)
-	addi s0, sp, 32
+	addi sp, sp, -80
+	sw ra, 76(sp)
+	sw s0, 72(sp)
+	sw s0, 68(sp)
+	sw s1, 64(sp)
+	sw s10, 60(sp)
+	sw s11, 56(sp)
+	sw s2, 52(sp)
+	sw s3, 48(sp)
+	sw s4, 44(sp)
+	sw s5, 40(sp)
+	sw s6, 36(sp)
+	sw s7, 32(sp)
+	sw s8, 28(sp)
+	sw s9, 24(sp)
+	addi s0, sp, 80
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, a2, 0
@@ -943,9 +1033,21 @@ nestedCalls:
 	jal x0, nestedCalls_return
 
 nestedCalls_return:
-	lw ra, 28(sp)
-	lw s0, 24(sp)
-	addi sp, sp, 32
+	lw ra, 76(sp)
+	lw s0, 72(sp)
+	lw s0, 68(sp)
+	lw s1, 64(sp)
+	lw s10, 60(sp)
+	lw s11, 56(sp)
+	lw s2, 52(sp)
+	lw s3, 48(sp)
+	lw s4, 44(sp)
+	lw s5, 40(sp)
+	lw s6, 36(sp)
+	lw s7, 32(sp)
+	lw s8, 28(sp)
+	lw s9, 24(sp)
+	addi sp, sp, 80
 	jalr x0, ra, 0
 
 main:
@@ -957,33 +1059,57 @@ main:
 	sw t5, -4(s0)
 	addi s1, x0, 12
 	addi a0, s1, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, fibonacci
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi t1, a0, 0
 	addi s1, x0, 22
 	addi s2, x0, 15
 	addi a0, s1, 0
 	addi a1, s2, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, gcd
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi t2, a0, 0
 	addi s2, x0, 17
 	addi a0, s2, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, isPrime
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi t3, a0, 0
 	addi s2, x0, 8
 	addi a0, s2, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, factorial
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi t4, a0, 0
 	addi s2, x0, 7
 	addi s1, x0, 3
 	addi a0, s2, 0
 	addi a1, s1, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, combination
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi s1, a0, 0
 	addi s2, x0, 3
 	addi s3, x0, 11
 	addi a0, s2, 0
 	addi a1, s3, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, power
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi s3, a0, 0
 	addi s2, x0, 3
 	addi s4, x0, 5
@@ -991,17 +1117,29 @@ main:
 	addi a0, s2, 0
 	addi a1, s4, 0
 	addi a2, s5, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, complexFunction
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi s5, a0, 0
 	addi s5, x0, -5
 	addi s4, x0, 10
 	addi a0, s5, 0
 	addi a1, s4, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, shortCircuit
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi s4, a0, 0
 	addi s4, x0, 10
 	addi a0, s4, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, nestedLoopsAndConditions
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi t5, a0, 0
 	sw t5, -8(s0)
 	addi s5, x0, 1
@@ -1025,7 +1163,11 @@ main:
 	addi a5, s9, 0
 	addi a6, s10, 0
 	addi a7, s11, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, nestedCalls
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi t0, a0, 0
 	addi sp, sp, 8
 	add t0, t1, t2

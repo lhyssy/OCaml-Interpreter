@@ -1,10 +1,14 @@
 .globl main
 .text
 factorial:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, x0, 1
 	slt s3, s2, s1
@@ -25,16 +29,24 @@ endif_1:
 	jal x0, factorial_return
 
 factorial_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 fibonacci:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, x0, 0
 	slt s3, s2, s1
@@ -69,16 +81,25 @@ endif_5:
 	jal x0, fibonacci_return
 
 fibonacci_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 gcd:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	sw s5, 4(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, x0, 0
@@ -99,14 +120,20 @@ endif_7:
 	jal x0, gcd_return
 
 gcd_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	lw s5, 4(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 is_prime:
 	addi sp, sp, -16
 	sw s0, 8(sp)
+	sw s1, 4(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, x0, 1
@@ -193,6 +220,7 @@ while_end_18:
 
 is_prime_return:
 	lw s0, 8(sp)
+	lw s1, 4(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
@@ -216,14 +244,26 @@ main:
 	addi s5, x0, 87
 	addi a0, s4, 0
 	addi a1, s5, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, gcd
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s5, a0, 0
 	addi a0, s5, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, factorial
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s5, a0, 0
 	addi s4, x0, 8
 	addi a0, s4, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, fibonacci
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s4, a0, 0
 	add t4, s5, s4
 	addi s6, x0, 0
@@ -306,11 +346,19 @@ while_continue_31:
 while_end_32:
 	addi s8, x0, 0
 	addi a0, s2, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, is_prime
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s5, a0, 0
 	beq s5, x0, else_36
 	addi a0, s1, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, is_prime
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s5, a0, 0
 	beq s5, x0, else_38
 	mul s9, s2, s1
@@ -318,7 +366,11 @@ while_end_32:
 	jal x0, endif_39
 else_38:
 	addi a0, s3, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, is_prime
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s9, a0, 0
 	beq s9, x0, else_40
 	mul s5, s2, s3
@@ -331,11 +383,19 @@ endif_39:
 	jal x0, endif_37
 else_36:
 	addi a0, s1, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, is_prime
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s5, a0, 0
 	beq s5, x0, else_42
 	addi a0, s3, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, is_prime
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s5, a0, 0
 	beq s5, x0, else_44
 	mul s9, s1, s3
@@ -347,7 +407,11 @@ endif_45:
 	jal x0, endif_43
 else_42:
 	addi a0, s3, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, is_prime
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi s9, a0, 0
 	beq s9, x0, else_46
 	addi s8, s3, 0

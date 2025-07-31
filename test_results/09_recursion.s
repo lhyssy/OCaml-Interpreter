@@ -1,10 +1,14 @@
 .globl main
 .text
 fact:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, x0, 1
 	slt s3, s2, s1
@@ -25,9 +29,13 @@ else_0:
 endif_1:
 
 fact_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 main:

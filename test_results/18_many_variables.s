@@ -23,10 +23,18 @@ abs_return:
 	jalr x0, ra, 0
 
 compute:
-	addi sp, sp, -16
-	sw ra, 12(sp)
-	sw s0, 8(sp)
-	addi s0, sp, 16
+	addi sp, sp, -48
+	sw ra, 44(sp)
+	sw s0, 40(sp)
+	sw s1, 36(sp)
+	sw s2, 32(sp)
+	sw s3, 28(sp)
+	sw s4, 24(sp)
+	sw s5, 20(sp)
+	sw s6, 16(sp)
+	sw s7, 12(sp)
+	sw s8, 8(sp)
+	addi s0, sp, 48
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, a2, 0
@@ -56,9 +64,17 @@ compute:
 	jal x0, compute_return
 
 compute_return:
-	lw ra, 12(sp)
-	lw s0, 8(sp)
-	addi sp, sp, 16
+	lw ra, 44(sp)
+	lw s0, 40(sp)
+	lw s1, 36(sp)
+	lw s2, 32(sp)
+	lw s3, 28(sp)
+	lw s4, 24(sp)
+	lw s5, 20(sp)
+	lw s6, 16(sp)
+	lw s7, 12(sp)
+	lw s8, 8(sp)
+	addi sp, sp, 48
 	jalr x0, ra, 0
 
 main:

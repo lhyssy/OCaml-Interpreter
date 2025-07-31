@@ -6,6 +6,7 @@ type preg =
   | T0 | T1 | T2 | T3 | T4 | T5 | T6
   | S0 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11
   | RA | SP | FP | ZERO
+;;
 
 let string_of_preg = function
   | A0 -> "a0" | A1 -> "a1" | A2 -> "a2" | A3 -> "a3"
@@ -16,63 +17,7 @@ let string_of_preg = function
   | S4 -> "s4" | S5 -> "s5" | S6 -> "s6" | S7 -> "s7"
   | S8 -> "s8" | S9 -> "s9" | S10 -> "s10" | S11 -> "s11"
   | RA -> "ra" | SP -> "sp" | FP -> "fp" | ZERO -> "zero"
-
-(* IR to Assembly *)
-let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) =
-  let out = Buffer.create 1024 in
-  let reg r =
-    match Hashtbl.find vreg_map r with
-    | Some preg -> string_of_preg preg
-    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented)")
-  in
-  let op_to_s = function
-    | VReg r -> reg r
-    | Imm i -> string_of_int i
-  in
-  List.iter (function
-    | IR_Label s -> Buffer.add_string out (s ^ ":\n")
-    | IR_Comment _ -> ()
-    | IR_Li (r, i) -> 
-        (* 替换 li 伪指令，对于小的立即数使用 addi，大的立即数仍然使用 li *)
-        if i >= -2048 && i <= 2047 then
-          Printf.bprintf out "\taddi %s, x0, %d\n" (reg r) i
-        else
-          Printf.bprintf out "\tli %s, %d\n" (reg r) i
-    | IR_Mv (rd, rs) ->
-        let physical_rd = Hashtbl.find vreg_map rd in
-        let physical_rs = Hashtbl.find vreg_map rs in
-        if physical_rd <> physical_rs then
-          Printf.bprintf out "\taddi %s, %s, 0\n" (reg rd) (reg rs)
-    | IR_Add (rd, r1, op2) -> Printf.bprintf out "\tadd %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
-    | IR_Sub (rd, r1, op2) -> Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
-    | IR_Mul (rd, r1, r2) -> Printf.bprintf out "\tmul %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
-    | IR_Div (rd, r1, r2) -> Printf.bprintf out "\tdiv %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
-    | IR_Rem (rd, r1, r2) -> Printf.bprintf out "\trem %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
-    | IR_Slli (rd, r1, i) -> Printf.bprintf out "\tslli %s, %s, %d\n" (reg rd) (reg r1) i
-    | IR_Srli (rd, r1, i) -> Printf.bprintf out "\tsrli %s, %s, %d\n" (reg rd) (reg r1) i
-    | IR_Seqz (rd, rs) ->
-        Printf.bprintf out "\tsub %s, %s, x0\n" (reg rd) (reg rs);
-        Printf.bprintf out "\tsltiu %s, %s, 1\n" (reg rd) (reg rd)
-    | IR_Snez (rd, rs) ->
-        Printf.bprintf out "\tsub %s, %s, x0\n" (reg rd) (reg rs);
-        Printf.bprintf out "\tsltu %s, x0, %s\n" (reg rd) (reg rd)
-    | IR_Slt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
-    | IR_Sgt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r2) (reg r1)
-    | IR_Sge (rd, r1, r2) ->
-        Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r1) (reg r2);
-        Printf.bprintf out "\txori %s, %s, 1\n" (reg rd) (reg rd)
-    | IR_Lw (rd, off, rs) -> Printf.bprintf out "\tlw %s, %d(%s)\n" (reg rd) off (reg rs)
-    | IR_Sw (rs, off, rd) -> Printf.bprintf out "\tsw %s, %d(%s)\n" (reg rs) off (reg rd)
-    | IR_J s -> Printf.bprintf out "\tjal x0, %s\n" s
-    | IR_Beqz (rs, l) -> Printf.bprintf out "\tbeq %s, x0, %s\n" (reg rs) l
-    | IR_Bnez (rs, l) -> Printf.bprintf out "\tbne %s, x0, %s\n" (reg rs) l
-    | IR_Call s -> Printf.bprintf out "\tjal ra, %s\n" s
-    | IR_Ret -> Buffer.add_string out "\tjalr x0, ra, 0\n"
-    | IR_Adjust_SP i -> Printf.bprintf out "\taddi sp, sp, %d\n" i
-    | IR_Push_Caller_Stack_Arg (rs, offset) -> Printf.bprintf out "\tsw %s, %d(sp)\n" (reg rs) offset
-    | IR_Load_Callee_Stack_Arg (rd, offset) -> Printf.bprintf out "\tlw %s, %d(s0)\n" (reg rd) offset
-  ) instrs;
-  Buffer.contents out
+;;
 
 (* 活跃区间分析 *)
 module VRegMap = Map.Make(Int)
@@ -81,6 +26,30 @@ type live_interval = {
   mutable end_of: int;
 }
 type live_intervals = live_interval VRegMap.t
+
+(* Helper to get uses and defs for the spill rewriter *)
+let get_vreg_uses_and_defs instr =
+  match instr with
+  | IR_Li (d, _) -> [], [d]
+  | IR_Mv (d, s) -> [s], [d]
+  | IR_Add (d, r1, VReg r2) | IR_Sub (d, r1, VReg r2)
+  | IR_Mul (d, r1, r2) | IR_Div (d, r1, r2) | IR_Rem (d, r1, r2)
+  | IR_Slt (d, r1, r2) | IR_Sgt (d, r1, r2) -> [r1; r2], [d]
+  | IR_Add (d, r1, Imm _) | IR_Sub (d, r1, Imm _) -> [r1], [d]
+  | IR_Slli (d, s, _) | IR_Srli (d, s, _) -> [s], [d]
+  | IR_Seqz (d, s) | IR_Snez (d, s) -> [s], [d]
+  | IR_Lw (d, _, s) -> [s], [d]
+  | IR_Sw (s, _, base) -> [s; base], []
+  | IR_Beqz (s, _) | IR_Bnez (s, _) -> [s], []
+  | IR_Call _ ->
+      (* Simplified: first 8 args passed in a0-a7, which are not allocatable. Result in a0 *)
+      [], [1] (* a0 is defined by call *)
+  | IR_Ret | IR_Label _ | IR_Comment _ -> ([], [])
+  | IR_Adjust_SP _ -> ([], [])
+  | IR_Push_Caller_Stack_Arg (s, _) -> [s], []
+  | IR_Load_Callee_Stack_Arg (d, _) -> [], [d]
+  | _ -> ([], []) (* Should not happen with exhaustive matching *)
+;;
 
 let compute_live_intervals (instrs: instruction list) : live_intervals =
   let intervals = ref VRegMap.empty in
@@ -113,54 +82,31 @@ let compute_live_intervals (instrs: instruction list) : live_intervals =
   in
 
   List.iteri (fun i instr ->
-    let used, defined =
-      match instr with
-      | IR_Li (d, _) -> [], [d]
-      | IR_Mv (d, s) -> [s], [d]
-      | IR_Add (d, r1, VReg r2) | IR_Sub (d, r1, VReg r2)
-      | IR_Mul (d, r1, r2) | IR_Div (d, r1, r2) | IR_Rem (d, r1, r2)
-      | IR_Slt (d, r1, r2) | IR_Sgt (d, r1, r2) -> [r1; r2], [d]
-      | IR_Add (d, r1, Imm _) | IR_Sub (d, r1, Imm _) -> [r1], [d]
-      | IR_Slli (d, s, _) | IR_Srli (d, s, _) -> [s], [d]
-      | IR_Seqz (d, s) | IR_Snez (d, s) -> [s], [d]
-      | IR_Lw (d, _, s) -> [s], [d]
-      | IR_Sw (s, _, base) -> [s; base], []
-      | IR_Beqz (s, _) | IR_Bnez (s, _) -> [s], []
-      | IR_Call _ -> [], [1]
-      | IR_Ret | IR_Label _ | IR_Comment _ -> ([], [])
-      | IR_Adjust_SP _ -> ([], [])
-      | IR_Push_Caller_Stack_Arg (s, _) -> [s], []
-      | IR_Load_Callee_Stack_Arg (d, _) -> [], [d]
-      | _ -> ([], [])
-    in
+    let used, defined = get_vreg_uses_and_defs instr in
     process_vreg_defs i defined;
     process_vreg_uses i used;
   ) instrs;
 
   !intervals
+;;
 
-(* Helper to get uses and defs for the spill rewriter *)
-let get_vreg_uses_and_defs instr =
-  match instr with
-  | IR_Li (d, _) -> [], [d]
-  | IR_Mv (d, s) -> [s], [d]
-  | IR_Add (d, r1, VReg r2) | IR_Sub (d, r1, VReg r2)
-  | IR_Mul (d, r1, r2) | IR_Div (d, r1, r2) | IR_Rem (d, r1, r2)
-  | IR_Slt (d, r1, r2) | IR_Sgt (d, r1, r2) -> [r1; r2], [d]
-  | IR_Add (d, r1, Imm _) | IR_Sub (d, r1, Imm _) -> [r1], [d]
-  | IR_Slli (d, s, _) | IR_Srli (d, s, _) -> [s], [d]
-  | IR_Seqz (d, s) | IR_Snez (d, s) -> [s], [d]
-  | IR_Lw (d, _, s) -> [s], [d]
-  | IR_Sw (s, _, base) -> [s; base], []
-  | IR_Beqz (s, _) | IR_Bnez (s, _) -> [s], []
-  | IR_Call _ ->
-      (* Simplified: first 8 args passed in a0-a7, which are not allocatable. Result in a0 *)
-      [], [1] (* a0 is defined by call *)
-  | IR_Ret | IR_Label _ | IR_Comment _ -> ([], [])
-  | IR_Adjust_SP _ -> ([], [])
-  | IR_Push_Caller_Stack_Arg (s, _) -> [s], []
-  | IR_Load_Callee_Stack_Arg (d, _) -> [], [d]
-  | _ -> ([], []) (* Should not happen with exhaustive matching *)
+(* 判断每个vreg是否live across call *)
+let compute_live_across_call (instrs: instruction list) : (vreg, bool) Hashtbl.t =
+  let live_across = Hashtbl.create 16 in
+  let live_now = ref [] in
+  List.iteri (fun _ instr ->
+    let used, defined = get_vreg_uses_and_defs instr in
+    (* 在call前，live_now中所有vreg都活跃穿越call *)
+    (match instr with
+    | IR_Call _ ->
+        List.iter (fun v -> Hashtbl.replace live_across v true) !live_now
+    | _ -> ());
+    (* 更新live_now *)
+    live_now := List.filter (fun v -> not (List.mem v defined)) !live_now;
+    List.iter (fun v -> if not (List.mem v !live_now) then live_now := v :: !live_now) used;
+  ) instrs;
+  live_across
+;;
 
 (* Virtual registers for spill temps. We use negative numbers to avoid collision. *)
 let t_spill1_vreg = -1
@@ -242,55 +188,216 @@ let rewrite_spills instrs allocation =
   ) [] instrs in
   
   (rewritten_instrs, spill_frame_size)
+;;
 
 (* 线性扫描寄存器分配 *)
-let linear_scan_allocator (intervals: live_intervals) : (vreg, preg option) Hashtbl.t =
+let linear_scan_allocator (intervals: live_intervals) (live_across_call: (vreg, bool) Hashtbl.t) : (vreg, preg option) Hashtbl.t =
   let allocation = Hashtbl.create (VRegMap.cardinal intervals) in
   let sorted_intervals = List.sort (fun (_, a) (_, b) -> compare a.start b.start) (VRegMap.bindings intervals) in
-  
-  (* 移除 S0，因为它被用作帧指针FP *) 
-  let physical_regs = [T0; T1; T2; T3; T4; S1; S2; S3; S4; S5; S6; S7; S8; S9; S10; S11] in (* T5, T6 are reserved for spills *)
-  let free_regs = ref physical_regs in
-
-  let active = ref [] in (* list of (vreg, preg, interval) *)
-
+  let caller_saved = [T0; T1; T2; T3; T4] in
+  let callee_saved = [S1; S2; S3; S4; S5; S6; S7; S8; S9; S10; S11] in
+  let free_caller = ref caller_saved in
+  let free_callee = ref callee_saved in
+  let active = ref [] in
   List.iter (fun (vreg, interval) ->
-    (* 1. 释放不活跃的寄存器 *)
     let (still_active, expired) = List.partition (fun (_, _, i) -> i.end_of > interval.start) !active in
     active := still_active;
-    List.iter (fun (_, preg, _) -> free_regs := preg :: !free_regs) expired;
-
-    (* 2. 分配寄存器 *)
-    match !free_regs with
+    List.iter (fun (_, preg, _) ->
+      if List.mem preg caller_saved then free_caller := preg :: !free_caller
+      else if List.mem preg callee_saved then free_callee := preg :: !free_callee
+    ) expired;
+    let need_callee =
+      try Hashtbl.find live_across_call vreg with Not_found -> false
+    in
+    let alloc_reg =
+      if need_callee then !free_callee else !free_caller @ !free_callee
+    in
+    match alloc_reg with
     | preg :: rest ->
-      free_regs := rest;
+      if need_callee then free_callee := rest else
+        if List.mem preg caller_saved then free_caller := List.filter ((<>) preg) !free_caller
+        else free_callee := List.filter ((<>) preg) !free_callee;
       Hashtbl.add allocation vreg (Some preg);
       active := (vreg, preg, interval) :: !active;
       active := List.sort (fun (_, _, a) (_, _, b) -> compare a.end_of b.end_of) !active
     | [] ->
-      (* 3. 溢出 (Spill) *)
-      (* Standard heuristic: spill the interval in 'active' that ends latest. *)
-      (* 'active' is sorted by end_of ascending, so the last element is the one to spill. *)
       let last_in_active = List.hd (List.rev !active) in
       let (spill_vreg, spill_preg, spill_interval) = last_in_active in
-      
       if spill_interval.end_of > interval.end_of then (
-        (* Spill the existing interval because it lives longer than the current one *)
         active := List.filter (fun (v, _, _) -> v <> spill_vreg) !active;
-        Hashtbl.add allocation spill_vreg None; (* Mark as spilled *)
-        
-        (* Allocate its physical register to the current interval *)
+        Hashtbl.add allocation spill_vreg None;
         Hashtbl.add allocation vreg (Some spill_preg);
         active := (vreg, spill_preg, interval) :: !active;
         active := List.sort (fun (_, _, a) (_, _, b) -> compare a.end_of b.end_of) !active
       ) else (
-        (* Spill the current interval, as it ends later (or same time) *)
         Hashtbl.add allocation vreg None
       )
   ) sorted_intervals;
-
   allocation
+;;
 
+(* 检查关于s1~s11的寄存器使用情况，输出携带的s寄存器 *)
+let check_s_regs_usage (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) =
+  try
+  let reg r =
+    match Hashtbl.find vreg_map r with
+    | Some preg -> preg
+    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented)")
+  in
+  
+  let is_s_reg preg = 
+    match preg with
+    | S0 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11 -> true
+    | _ -> false
+  in
+
+  let s_reg_usage = function
+    | IR_Label _ | IR_Comment _ -> []
+    | IR_Li (r, _) -> [reg r]
+    | IR_Mv (rd, rs) -> [reg rd; reg rs]
+    | IR_Add (rd, r1, op2) | IR_Sub (rd, r1, op2) ->
+        [reg rd; reg r1] @ (match op2 with VReg r2 -> [reg r2] | _ -> [])
+    | IR_Mul (rd, r1, r2) | IR_Div (rd, r1, r2) | IR_Rem (rd, r1, r2) ->
+        [reg rd; reg r1; reg r2]
+    | IR_Slli (rd, r1, _) | IR_Srli (rd, r1, _) ->
+        [reg rd; reg r1]
+    | IR_Seqz (rd, rs) | IR_Snez (rd, rs) ->
+        [reg rd; reg rs]
+    | IR_Slt (rd, r1, r2) | IR_Sgt (rd, r1, r2) | IR_Sge (rd, r1, r2) ->
+        [reg rd; reg r1; reg r2]
+    | IR_Lw (rd, _, rs) | IR_Sw (rs, _, rd) ->
+        [reg rd; reg rs]
+    | IR_J _ -> []
+    | IR_Beqz (r, _) | IR_Bnez (r, _) -> [reg r]
+    | IR_Call _ -> [] (* 假设call不显式使用s寄存器 *)
+    | IR_Ret -> []
+    | IR_Adjust_SP _ -> []
+    | IR_Push_Caller_Stack_Arg (r, _) -> [reg r]
+    | IR_Load_Callee_Stack_Arg (r, _) -> [reg r]
+  in
+
+  instrs
+  |> List.concat_map s_reg_usage
+  |> List.filter is_s_reg
+  |> List.sort_uniq (fun a b -> compare (string_of_preg a) (string_of_preg b))
+  with Not_found ->
+    failwith "vreg_map does not contain all vregs used in instructions";
+;;
+
+(* 调用函数相关汇编 *)
+let code_of_call func_name (vreg_map : (vreg, preg option) Hashtbl.t) buf live_intervals cnt is_leaf = 
+  let reg r =
+    match Hashtbl.find vreg_map r with
+    | Some preg -> preg
+    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented)")
+  in
+  
+  let is_t_reg preg = 
+    match preg with
+    | T0 | T1 | T2 | T3 | T4 | T5 | T6 -> true
+    | _ -> false
+  in
+
+  (* 找到live_intervals中区间内有cnt的区间 *)
+  let live_int = List.filter (fun (_, interval) ->
+    interval.start <= !cnt && interval.end_of >= !cnt
+  ) (VRegMap.bindings live_intervals) in
+
+  (* 找到所有活跃的t寄存器 *)
+  let t_regs = live_int
+  |> List.map (fun x -> reg (fst x))
+  |> List.filter is_t_reg
+  |> List.sort_uniq (fun a b -> compare (string_of_preg a) (string_of_preg b)) in
+
+  (* 计算保存t寄存器所需堆栈大小 *)
+  let t_regs_size = if is_leaf then 0 else List.length t_regs * 4 in
+
+  (* 调整堆栈指针, 保存t寄存器 *)
+  if (t_regs_size > 0) then(
+    Printf.bprintf buf "\taddi sp, sp, -%d\n" t_regs_size;
+    List.iteri (fun i preg ->
+      Printf.bprintf buf "\tsw %s, %d(sp)\n" (string_of_preg preg) (i * 4 + 4)
+    ) t_regs;
+  );
+  
+  (* 调用函数 *)
+  Printf.bprintf buf "\tjal ra, %s\n" func_name;
+
+  (* 恢复t寄存器 *)
+  if (t_regs_size > 0) then(
+    List.iteri (fun i preg ->
+      Printf.bprintf buf "\tlw %s, %d(sp)\n" (string_of_preg preg) (i * 4 + 4)
+    ) t_regs;
+    Printf.bprintf buf "\taddi sp, sp, %d\n" t_regs_size;
+  );
+;;
+
+(* IR to Assembly *)
+let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) live_intervals is_leaf =
+  let counter = ref 0 in
+  let out = Buffer.create 1024 in
+  let reg r =
+    match Hashtbl.find vreg_map r with
+    | Some preg -> string_of_preg preg
+    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented)")
+  in
+  let op_to_s = function
+    | VReg r -> reg r
+    | Imm i -> string_of_int i
+  in
+  let code_of_ir_instr instr = 
+    match instr with
+    | IR_Label s -> Buffer.add_string out (s ^ ":\n")
+    | IR_Comment _ -> ()
+    | IR_Li (r, i) -> 
+        (* 替换 li 伪指令，对于小的立即数使用 addi，大的立即数仍然使用 li *)
+        if i >= -2048 && i <= 2047 then
+          Printf.bprintf out "\taddi %s, x0, %d\n" (reg r) i
+        else
+          Printf.bprintf out "\tli %s, %d\n" (reg r) i
+    | IR_Mv (rd, rs) ->
+        let physical_rd = Hashtbl.find vreg_map rd in
+        let physical_rs = Hashtbl.find vreg_map rs in
+        if physical_rd <> physical_rs then
+          Printf.bprintf out "\taddi %s, %s, 0\n" (reg rd) (reg rs)
+    | IR_Add (rd, r1, op2) -> Printf.bprintf out "\tadd %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
+    | IR_Sub (rd, r1, op2) -> Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
+    | IR_Mul (rd, r1, r2) -> Printf.bprintf out "\tmul %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Div (rd, r1, r2) -> Printf.bprintf out "\tdiv %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Rem (rd, r1, r2) -> Printf.bprintf out "\trem %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Slli (rd, r1, i) -> Printf.bprintf out "\tslli %s, %s, %d\n" (reg rd) (reg r1) i
+    | IR_Srli (rd, r1, i) -> Printf.bprintf out "\tsrli %s, %s, %d\n" (reg rd) (reg r1) i
+    | IR_Seqz (rd, rs) ->
+        Printf.bprintf out "\tsub %s, %s, x0\n" (reg rd) (reg rs);
+        Printf.bprintf out "\tsltiu %s, %s, 1\n" (reg rd) (reg rd)
+    | IR_Snez (rd, rs) ->
+        Printf.bprintf out "\tsub %s, %s, x0\n" (reg rd) (reg rs);
+        Printf.bprintf out "\tsltu %s, x0, %s\n" (reg rd) (reg rd)
+    | IR_Slt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+    | IR_Sgt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r2) (reg r1)
+    | IR_Sge (rd, r1, r2) ->
+        Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r1) (reg r2);
+        Printf.bprintf out "\txori %s, %s, 1\n" (reg rd) (reg rd)
+    | IR_Lw (rd, off, rs) -> Printf.bprintf out "\tlw %s, %d(%s)\n" (reg rd) off (reg rs)
+    | IR_Sw (rs, off, rd) -> Printf.bprintf out "\tsw %s, %d(%s)\n" (reg rs) off (reg rd)
+    | IR_J s -> Printf.bprintf out "\tjal x0, %s\n" s
+    | IR_Beqz (rs, l) -> Printf.bprintf out "\tbeq %s, x0, %s\n" (reg rs) l
+    | IR_Bnez (rs, l) -> Printf.bprintf out "\tbne %s, x0, %s\n" (reg rs) l
+    | IR_Call s -> code_of_call s vreg_map out live_intervals counter is_leaf;
+    | IR_Ret -> Buffer.add_string out "\tjalr x0, ra, 0\n"
+    | IR_Adjust_SP i -> Printf.bprintf out "\taddi sp, sp, %d\n" i
+    | IR_Push_Caller_Stack_Arg (rs, offset) -> Printf.bprintf out "\tsw %s, %d(sp)\n" (reg rs) offset
+    | IR_Load_Callee_Stack_Arg (rd, offset) -> Printf.bprintf out "\tlw %s, %d(s0)\n" (reg rd) offset
+    ;
+    counter := !counter + 1
+  in
+
+  List.iter code_of_ir_instr instrs;
+  Buffer.contents out
+;;
+
+
+(* 生成最终的risc-v汇编代码 *)
 let generate_riscv (Program_ir prog_ir) =
   let final_code = Buffer.create(4096) in
   
@@ -304,21 +411,42 @@ let generate_riscv (Program_ir prog_ir) =
     
     let instrs = func_def.body in
     let intervals = compute_live_intervals instrs in
+
+    (* 新增：分析哪些vreg活跃穿越call *)
+    let live_across_call = compute_live_across_call instrs in
     
     (* Separate pre-colored vregs (0-8 for args/fp) from the rest *)
     let (_, other_vregs) =
       VRegMap.partition (fun vreg _ -> vreg >= 0 && vreg <= 8) intervals in
     
-    (* Allocate only the other vregs *)
-    let allocation = linear_scan_allocator other_vregs in
+    (* Allocate only the other vregs，传入live_across_call *)
+    let allocation = linear_scan_allocator other_vregs live_across_call in
     
     let is_leaf = func_def.is_leaf in
     
     let (rewritten_instrs, spill_frame_size) = rewrite_spills instrs allocation in
 
+    (* Add the pre-colored vregs to the allocation table *)
+        Hashtbl.add allocation 0 (Some S0); (* FP is s0 *)
+        Hashtbl.add allocation 1 (Some A0);
+        Hashtbl.add allocation 2 (Some A1);
+        Hashtbl.add allocation 3 (Some A2);
+        Hashtbl.add allocation 4 (Some A3);
+        Hashtbl.add allocation 5 (Some A4);
+        Hashtbl.add allocation 6 (Some A5);
+        Hashtbl.add allocation 7 (Some A6);
+        Hashtbl.add allocation 8 (Some A7);
+        Hashtbl.add allocation t_spill1_vreg (Some T5);
+        Hashtbl.add allocation t_spill2_vreg (Some T6);
+
+    let s_regs_save = check_s_regs_usage rewritten_instrs allocation in
+
     let ra_slot_size = if is_leaf then 0 else 4 in
     let s0_slot_size = 4 in
-    let total_frame_size = spill_frame_size + ra_slot_size + s0_slot_size in
+    let s_slot_size = if func_def.name <> "main" then List.length s_regs_save * 4 else 0 in
+
+    (* Calculate total frame size *)
+    let total_frame_size = spill_frame_size + ra_slot_size + s0_slot_size + s_slot_size in
     
     (* Align frame size to 16 bytes *)
     let frame_size =
@@ -334,22 +462,17 @@ let generate_riscv (Program_ir prog_ir) =
     if not is_leaf then
       Printf.bprintf final_code "\tsw ra, %d(sp)\n" ra_offset;
     Printf.bprintf final_code "\tsw s0, %d(sp)\n" s0_offset;
+    if s_slot_size > 0 then
+      List.iteri (fun i preg ->
+        Printf.bprintf final_code "\tsw %s, %d(sp)\n" (string_of_preg preg) (frame_size - 12 - i * 4)
+      ) s_regs_save;
+    
+    (* Set up frame pointer *)
     Printf.bprintf final_code "\taddi s0, sp, %d\n" frame_size;
 
-    (* Add the pre-colored vregs to the allocation table *)
-    Hashtbl.add allocation 0 (Some S0); (* FP is s0 *)
-    Hashtbl.add allocation 1 (Some A0);
-    Hashtbl.add allocation 2 (Some A1);
-    Hashtbl.add allocation 3 (Some A2);
-    Hashtbl.add allocation 4 (Some A3);
-    Hashtbl.add allocation 5 (Some A4);
-    Hashtbl.add allocation 6 (Some A5);
-    Hashtbl.add allocation 7 (Some A6);
-    Hashtbl.add allocation 8 (Some A7);
-    Hashtbl.add allocation t_spill1_vreg (Some T5);
-    Hashtbl.add allocation t_spill2_vreg (Some T6);
-
-    let func_asm = code_of_ir rewritten_instrs allocation in
+    (* Generate assembly code for the function body *)
+    let new_live_intervals = compute_live_intervals rewritten_instrs in
+    let func_asm = code_of_ir rewritten_instrs allocation new_live_intervals is_leaf in
     Buffer.add_string final_code func_asm;
 
     (* Epilogue: the return label is added here, and jumps from 'ret' statements will land here. *)
@@ -357,9 +480,13 @@ let generate_riscv (Program_ir prog_ir) =
     if not is_leaf then
       Printf.bprintf final_code "\tlw ra, %d(sp)\n" ra_offset;
     Printf.bprintf final_code "\tlw s0, %d(sp)\n" s0_offset;
+    if s_slot_size > 0 then
+      List.iteri (fun i preg ->
+        Printf.bprintf final_code "\tlw %s, %d(sp)\n" (string_of_preg preg) (frame_size - 12 - i * 4)
+      ) s_regs_save;
     Printf.bprintf final_code "\taddi sp, sp, %d\n" frame_size;
     Buffer.add_string final_code "\tjalr x0, ra, 0\n\n";
 
   ) prog_ir;
 
-  Buffer.contents final_code 
+  Buffer.contents final_code
