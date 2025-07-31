@@ -38,6 +38,8 @@ let get_vreg_uses_and_defs instr =
   | IR_Add (d, r1, Imm _) | IR_Sub (d, r1, Imm _) -> [r1], [d]
   | IR_Slli (d, s, _) | IR_Srli (d, s, _) -> [s], [d]
   | IR_Seqz (d, s) | IR_Snez (d, s) -> [s], [d]
+  | IR_Beq (r1, r2, _) | IR_Bne (r1, r2, _) | IR_Blt (r1, r2, _) | IR_Bge (r1, r2, _) ->
+      [r1; r2], []
   | IR_Lw (d, _, s) -> [s], [d]
   | IR_Sw (s, _, base) -> [s; base], []
   | IR_Beqz (s, _) | IR_Bnez (s, _) -> [s], []
@@ -251,33 +253,9 @@ let check_s_regs_usage (instrs : instruction list) (vreg_map : (vreg, preg optio
     | _ -> false
   in
 
-  let s_reg_usage = function
-    | IR_Label _ | IR_Comment _ -> []
-    | IR_Li (r, _) -> [reg r]
-    | IR_Mv (rd, rs) -> [reg rd; reg rs]
-    | IR_Add (rd, r1, op2) | IR_Sub (rd, r1, op2) ->
-        [reg rd; reg r1] @ (match op2 with VReg r2 -> [reg r2] | _ -> [])
-    | IR_Mul (rd, r1, r2) | IR_Div (rd, r1, r2) | IR_Rem (rd, r1, r2) ->
-        [reg rd; reg r1; reg r2]
-    | IR_Slli (rd, r1, _) | IR_Srli (rd, r1, _) ->
-        [reg rd; reg r1]
-    | IR_Seqz (rd, rs) | IR_Snez (rd, rs) ->
-        [reg rd; reg rs]
-    | IR_Slt (rd, r1, r2) | IR_Sgt (rd, r1, r2) | IR_Sge (rd, r1, r2) ->
-        [reg rd; reg r1; reg r2]
-    | IR_Lw (rd, _, rs) | IR_Sw (rs, _, rd) ->
-        [reg rd; reg rs]
-    | IR_J _ -> []
-    | IR_Beqz (r, _) | IR_Bnez (r, _) -> [reg r]
-    | IR_Call _ -> [] (* 假设call不显式使用s寄存器 *)
-    | IR_Ret -> []
-    | IR_Adjust_SP _ -> []
-    | IR_Push_Caller_Stack_Arg (r, _) -> [reg r]
-    | IR_Load_Callee_Stack_Arg (r, _) -> [reg r]
-  in
-
   instrs
-  |> List.concat_map s_reg_usage
+  |> List.concat_map (fun x -> snd (get_vreg_uses_and_defs x))
+  |> List.map reg
   |> List.filter is_s_reg
   |> List.sort_uniq (fun a b -> compare (string_of_preg a) (string_of_preg b))
   with Not_found ->
@@ -383,6 +361,10 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
     | IR_J s -> Printf.bprintf out "\tjal x0, %s\n" s
     | IR_Beqz (rs, l) -> Printf.bprintf out "\tbeq %s, x0, %s\n" (reg rs) l
     | IR_Bnez (rs, l) -> Printf.bprintf out "\tbne %s, x0, %s\n" (reg rs) l
+    | IR_Beq (r1, r2, l) -> Printf.bprintf out "\tbeq %s, %s, %s\n" (reg r1) (reg r2) l
+    | IR_Bne (r1, r2, l) -> Printf.bprintf out "\tbne %s, %s, %s\n" (reg r1) (reg r2) l
+    | IR_Blt (r1, r2, l) -> Printf.bprintf out "\tblt %s, %s, %s\n" (reg r1) (reg r2) l
+    | IR_Bge (r1, r2, l) -> Printf.bprintf out "\tbge %s, %s, %s\n" (reg r1) (reg r2) l
     | IR_Call s -> code_of_call s vreg_map out live_intervals counter is_leaf;
     | IR_Ret -> Buffer.add_string out "\tjalr x0, ra, 0\n"
     | IR_Adjust_SP i -> Printf.bprintf out "\taddi sp, sp, %d\n" i
@@ -476,7 +458,7 @@ let generate_riscv (Program_ir prog_ir) =
     Buffer.add_string final_code func_asm;
 
     (* Epilogue: the return label is added here, and jumps from 'ret' statements will land here. *)
-    Buffer.add_string final_code ("\n" ^ return_label ^ ":\n");
+    Buffer.add_string final_code (return_label ^ ":\n");
     if not is_leaf then
       Printf.bprintf final_code "\tlw ra, %d(sp)\n" ra_offset;
     Printf.bprintf final_code "\tlw s0, %d(sp)\n" s0_offset;

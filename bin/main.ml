@@ -1,5 +1,6 @@
 open Interpreter_lib.String_of_ast
 open Interpreter_lib.Optimizer
+open Interpreter_lib.Optimizer2
 open Interpreter_lib.Irgen
 open Interpreter_lib.Codegen
 
@@ -63,16 +64,19 @@ let main () =
       raise e
   in
 
+  reset_label_count ();
+
   let optimized_ast = optimize_program ast in
   let ir_code = generate_ir optimized_ast in
-  let asm_code = generate_riscv ir_code in
+  let ir_code_opt = optimize_program2 ir_code in
+  let asm_code = generate_riscv ir_code_opt in
   output_string options.output asm_code;
 
   (* 处理输出模式 *)
   if options.show_ast then
     Printf.printf "%s\n" (string_of_program optimized_ast);
   if options.show_ir then
-    Printf.printf "%s\n" (string_of_ir_program ir_code);
+    Printf.printf "%s\n" (string_of_ir_program ir_code_opt);
 
   (* 清理资源 *)
   if options.input != stdin then close_in options.input;

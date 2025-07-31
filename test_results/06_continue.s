@@ -9,28 +9,23 @@ main:
 	addi t1, x0, 0
 while_start_0:
 	addi t2, x0, 5
-	slt t3, t0, t2
-	beq t3, x0, while_end_2
-	addi t2, x0, 1
-	add t3, t0, t2
-	addi t0, t3, 0
-	addi t2, x0, 3
-	sub t3, t0, t2
-	sub t4, t3, x0
-	sltiu t4, t4, 1
-	beq t4, x0, else_3
+	bge t0, t2, while_end_2
+	addi t3, x0, 1
+	add t2, t0, t3
+	addi t0, t2, 0
+	addi t3, x0, 3
+	bne t0, t3, else_3
 	jal x0, while_continue_1
 else_3:
 endif_4:
-	addi t4, x0, 1
-	add t3, t1, t4
+	addi t0, x0, 1
+	add t3, t1, t0
 	addi t1, t3, 0
 while_continue_1:
 	jal x0, while_start_0
 while_end_2:
 	addi a0, t1, 0
 	jal x0, main_return
-
 main_return:
 	lw ra, 12(sp)
 	lw s0, 8(sp)

@@ -9,7 +9,6 @@ add:
 	add t2, t0, t1
 	addi a0, t2, 0
 	jal x0, add_return
-
 add_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
@@ -28,7 +27,6 @@ main:
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, main_return
-
 main_return:
 	lw ra, 12(sp)
 	lw s0, 8(sp)

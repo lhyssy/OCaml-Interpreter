@@ -6,17 +6,15 @@ abs:
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, x0, 0
-	slt t2, t0, t1
-	beq t2, x0, else_0
-	addi t1, x0, 0
-	sub t2, t1, t0
-	addi a0, t2, 0
+	bge t0, t1, else_0
+	addi t2, x0, 0
+	sub t1, t2, t0
+	addi a0, t1, 0
 	jal x0, abs_return
 else_0:
 	addi a0, t0, 0
 	jal x0, abs_return
 endif_1:
-
 abs_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
@@ -62,7 +60,6 @@ compute:
 	add t0, t2, t3
 	addi a0, t0, 0
 	jal x0, compute_return
-
 compute_return:
 	lw ra, 44(sp)
 	lw s0, 40(sp)
@@ -102,7 +99,6 @@ main:
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, main_return
-
 main_return:
 	lw ra, 12(sp)
 	lw s0, 8(sp)

@@ -250,7 +250,57 @@ let rec compile_expr env expr : vreg =
           emit env (IR_Label label_end)
       );
       rd
+;;
 
+let rec compile_cond env cond false_label: unit =
+  match cond with
+  | EUnop (Not, e) ->
+    (* 取反条件 *)
+    let cond_vreg = compile_expr env e in
+    emit env (IR_Bnez (cond_vreg, false_label));
+  | EBinop(binop, e1, e2) -> (
+    match binop with
+    | Eq -> 
+      let r1 = compile_expr env e1 in
+      let r2 = compile_expr env e2 in
+      emit env (IR_Bne (r1, r2, false_label));
+    | Neq -> 
+      let r1 = compile_expr env e1 in
+      let r2 = compile_expr env e2 in
+      emit env (IR_Beq (r1, r2, false_label));
+    | Lt -> 
+      let r1 = compile_expr env e1 in
+      let r2 = compile_expr env e2 in
+      emit env (IR_Bge (r1, r2, false_label));
+    | Le -> 
+      let r1 = compile_expr env e1 in
+      let r2 = compile_expr env e2 in
+      emit env (IR_Blt (r2, r1, false_label));
+    | Gt -> 
+      let r1 = compile_expr env e1 in
+      let r2 = compile_expr env e2 in
+      emit env (IR_Bge (r2, r1, false_label));
+    | Ge -> 
+      let r1 = compile_expr env e1 in
+      let r2 = compile_expr env e2 in
+      emit env (IR_Blt (r1, r2, false_label));
+    | And -> 
+      compile_cond env e1 false_label;
+      compile_cond env e2 false_label;
+    | Or -> 
+      let next_label = fresh_label "or_true" in
+      let cond_vreg1 = compile_expr env e1 in
+      emit env (IR_Bnez (cond_vreg1, next_label));
+      compile_cond env e2 false_label;
+      emit env (IR_Label next_label);
+    | _ -> 
+      let cond_vreg = compile_expr env cond in
+      emit env (IR_Beqz (cond_vreg, false_label));
+  )
+  | _ ->
+    let cond_vreg = compile_expr env cond in
+    emit env (IR_Beqz (cond_vreg, false_label));
+;;
 (* 编译语句 *)
 let rec compile_stmt env stmt : unit =
   match stmt with
@@ -276,10 +326,9 @@ let rec compile_stmt env stmt : unit =
       let dest_vreg = find_var env.var_env name in
       emit env (IR_Mv (dest_vreg, val_vreg))
   | SIf (cond, then_s, else_opt) ->
-      let cond_vreg = compile_expr env cond in
       let else_label = fresh_label "else" in
       let end_label = fresh_label "endif" in
-      emit env (IR_Beqz (cond_vreg, else_label));
+      compile_cond env cond else_label;
       compile_stmt env then_s;
       emit env (IR_J end_label);
       emit env (IR_Label else_label);
@@ -296,9 +345,7 @@ let rec compile_stmt env stmt : unit =
     env.current_loop <- Some (continue_label, end_label);
 
     emit env (IR_Label start_label);
-    let cond_vreg = compile_expr env cond in
-    emit env (IR_Beqz (cond_vreg, end_label));
-
+    compile_cond env cond end_label;
     compile_stmt env body;
 
     emit env (IR_Label continue_label); (* continue 跳转点 *)
@@ -453,6 +500,10 @@ let string_of_instruction = function
   | IR_Srli (rd, rs, shamt) -> Printf.sprintf "srli v%d, v%d, %d" rd rs shamt
   | IR_Seqz (rd, rs) -> Printf.sprintf "seqz v%d, v%d" rd rs
   | IR_Snez (rd, rs) -> Printf.sprintf "snez v%d, v%d" rd rs
+  | IR_Beq (rs1, rs2, lbl) -> Printf.sprintf "beq v%d, v%d, %s" rs1 rs2 lbl
+  | IR_Bne (rs1, rs2, lbl) -> Printf.sprintf "bne v%d, v%d, %s" rs1 rs2 lbl
+  | IR_Blt (rs1, rs2, lbl) -> Printf.sprintf "blt v%d, v%d, %s" rs1 rs2 lbl
+  | IR_Bge (rs1, rs2, lbl) -> Printf.sprintf "bge v%d, v%d, %s" rs1 rs2 lbl
   | IR_Slt (rd, rs1, rs2) -> Printf.sprintf "slt v%d, v%d, v%d" rd rs1 rs2
   | IR_Sgt (rd, rs1, rs2) -> Printf.sprintf "sgt v%d, v%d, v%d" rd rs1 rs2
   | IR_Sge (rd, rs1, rs2) -> Printf.sprintf "sge v%d, v%d, v%d" rd rs1 rs2

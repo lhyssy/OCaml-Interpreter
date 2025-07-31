@@ -7,39 +7,33 @@ fibonacci:
 	sw s1, 20(sp)
 	sw s2, 16(sp)
 	sw s3, 12(sp)
-	sw s4, 8(sp)
 	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, x0, 1
-	slt s3, s2, s1
-	sub s4, s3, x0
-	sltiu s4, s4, 1
-	beq s4, x0, else_0
+	blt s2, s1, else_0
 	addi a0, s1, 0
 	jal x0, fibonacci_return
 else_0:
-	addi s4, x0, 1
-	sub s3, s1, s4
+	addi s2, x0, 1
+	sub s3, s1, s2
 	addi a0, s3, 0
 	jal ra, fibonacci
 	addi t0, a0, 0
 	addi s3, x0, 2
-	sub s4, s1, s3
-	addi a0, s4, 0
+	sub s2, s1, s3
+	addi a0, s2, 0
 	jal ra, fibonacci
 	addi t1, a0, 0
 	add t2, t0, t1
 	addi a0, t2, 0
 	jal x0, fibonacci_return
 endif_1:
-
 fibonacci_return:
 	lw ra, 28(sp)
 	lw s0, 24(sp)
 	lw s1, 20(sp)
 	lw s2, 16(sp)
 	lw s3, 12(sp)
-	lw s4, 8(sp)
 	addi sp, sp, 32
 	jalr x0, ra, 0
 
@@ -50,36 +44,28 @@ gcd:
 	sw s1, 20(sp)
 	sw s2, 16(sp)
 	sw s3, 12(sp)
-	sw s4, 8(sp)
-	sw s5, 4(sp)
 	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, x0, 0
-	sub s4, s2, s3
-	sub s5, s4, x0
-	sltiu s5, s5, 1
-	beq s5, x0, else_2
+	bne s2, s3, else_2
 	addi a0, s1, 0
 	jal x0, gcd_return
 else_2:
 endif_3:
-	rem s5, s1, s2
+	rem s3, s1, s2
 	addi a0, s2, 0
-	addi a1, s5, 0
+	addi a1, s3, 0
 	jal ra, gcd
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, gcd_return
-
 gcd_return:
 	lw ra, 28(sp)
 	lw s0, 24(sp)
 	lw s1, 20(sp)
 	lw s2, 16(sp)
 	lw s3, 12(sp)
-	lw s4, 8(sp)
-	lw s5, 4(sp)
 	addi sp, sp, 32
 	jalr x0, ra, 0
 
@@ -90,19 +76,13 @@ isPrime:
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, x0, 1
-	slt t2, t1, t0
-	sub t3, t2, x0
-	sltiu t3, t3, 1
-	beq t3, x0, else_4
+	blt t1, t0, else_4
 	addi a0, x0, 0
 	jal x0, isPrime_return
 else_4:
 endif_5:
-	addi t3, x0, 3
-	slt t2, t3, t0
-	sub t1, t2, x0
-	sltiu t1, t1, 1
-	beq t1, x0, else_6
+	addi t1, x0, 3
+	blt t1, t0, else_6
 	addi a0, x0, 1
 	jal x0, isPrime_return
 else_6:
@@ -113,64 +93,44 @@ endif_7:
 	sub t1, t2, t3
 	sub t4, t1, x0
 	sltiu t4, t4, 1
-	addi t2, x0, 3
-	rem t1, t0, t2
-	addi t3, x0, 0
-	sub t2, t1, t3
-	sub s1, t2, x0
-	sltiu s1, s1, 1
-	bne t4, x0, or_true_8
-	bne s1, x0, or_true_8
-	addi t4, x0, 0
-	jal x0, or_end_9
-or_true_8:
-	addi t4, x0, 1
-or_end_9:
-	beq t4, x0, else_10
+	bne t4, x0, or_true_10
+	addi t1, x0, 3
+	rem t4, t0, t1
+	addi t2, x0, 0
+	bne t4, t2, else_8
+or_true_10:
 	addi a0, x0, 0
 	jal x0, isPrime_return
-else_10:
-endif_11:
+else_8:
+endif_9:
 	addi t4, x0, 5
-while_start_12:
+while_start_11:
 	mul t2, t4, t4
-	slt t1, t0, t2
-	sub t3, t1, x0
-	sltiu t3, t3, 1
-	beq t3, x0, while_end_14
+	blt t0, t2, while_end_13
 	rem t1, t0, t4
-	addi t3, x0, 0
-	sub t2, t1, t3
-	sub s1, t2, x0
+	addi t2, x0, 0
+	sub t3, t1, t2
+	sub s1, t3, x0
 	sltiu s1, s1, 1
-	addi t1, x0, 2
-	add t2, t4, t1
-	rem t3, t0, t2
-	addi t1, x0, 0
-	sub t0, t3, t1
-	sub t2, t0, x0
-	sltiu t2, t2, 1
-	bne s1, x0, or_true_15
-	bne t2, x0, or_true_15
-	addi t0, x0, 0
-	jal x0, or_end_16
-or_true_15:
-	addi t0, x0, 1
-or_end_16:
-	beq t0, x0, else_17
+	bne s1, x0, or_true_16
+	addi t3, x0, 2
+	add t1, t4, t3
+	rem t2, t0, t1
+	addi t3, x0, 0
+	bne t2, t3, else_14
+or_true_16:
 	addi a0, x0, 0
 	jal x0, isPrime_return
-else_17:
-endif_18:
-	addi t0, x0, 6
-	add t2, t4, t0
-	addi t4, t2, 0
-while_continue_13:
-	jal x0, while_start_12
-while_end_14:
+else_14:
+endif_15:
+	addi t2, x0, 6
+	add t3, t4, t2
+	addi t4, t3, 0
+while_continue_12:
+	jal x0, while_start_11
+while_end_13:
 	addi a0, x0, 1
 	jal x0, isPrime_return
-
 isPrime_return:
 	lw s0, 8(sp)
 	lw s1, 4(sp)
@@ -183,21 +143,19 @@ factorial:
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, x0, 1
-while_start_19:
+while_start_17:
 	addi t2, x0, 0
-	slt t3, t2, t0
-	beq t3, x0, while_end_21
-	mul t2, t1, t0
-	addi t1, t2, 0
-	addi t3, x0, 1
-	sub t2, t0, t3
-	addi t0, t2, 0
-while_continue_20:
-	jal x0, while_start_19
-while_end_21:
+	bge t2, t0, while_end_19
+	mul t3, t1, t0
+	addi t1, t3, 0
+	addi t2, x0, 1
+	sub t3, t0, t2
+	addi t0, t3, 0
+while_continue_18:
+	jal x0, while_start_17
+while_end_19:
 	addi a0, t1, 0
 	jal x0, factorial_return
-
 factorial_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
@@ -215,31 +173,22 @@ combination:
 	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
-	slt s3, s1, s2
-	beq s3, x0, else_22
+	bge s1, s2, else_20
 	addi a0, x0, 0
 	jal x0, combination_return
-else_22:
-endif_23:
+else_20:
+endif_21:
 	addi s3, x0, 0
 	sub s4, s2, s3
 	sub s5, s4, x0
 	sltiu s5, s5, 1
-	sub s3, s2, s1
-	sub s4, s3, x0
-	sltiu s4, s4, 1
 	bne s5, x0, or_true_24
-	bne s4, x0, or_true_24
-	addi s5, x0, 0
-	jal x0, or_end_25
+	bne s2, s1, else_22
 or_true_24:
-	addi s5, x0, 1
-or_end_25:
-	beq s5, x0, else_26
 	addi a0, x0, 1
 	jal x0, combination_return
-else_26:
-endif_27:
+else_22:
+endif_23:
 	addi a0, s1, 0
 	jal ra, factorial
 	addi t0, a0, 0
@@ -254,7 +203,6 @@ endif_27:
 	div t4, t0, t3
 	addi a0, t4, 0
 	jal x0, combination_return
-
 combination_return:
 	lw ra, 28(sp)
 	lw s0, 24(sp)
@@ -270,41 +218,34 @@ power:
 	addi sp, sp, -16
 	sw s0, 8(sp)
 	sw s1, 4(sp)
-	sw s2, 0(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, a1, 0
 	addi t2, x0, 1
-while_start_28:
+while_start_25:
 	addi t3, x0, 0
-	slt t4, t3, t1
-	beq t4, x0, while_end_30
-	addi t3, x0, 2
-	rem t4, t1, t3
+	bge t3, t1, while_end_27
+	addi t4, x0, 2
+	rem t3, t1, t4
 	addi s1, x0, 1
-	sub t3, t4, s1
-	sub s2, t3, x0
-	sltiu s2, s2, 1
-	beq s2, x0, else_31
-	mul t3, t2, t0
-	addi t2, t3, 0
-	jal x0, endif_32
-else_31:
-endif_32:
-	mul t3, t0, t0
-	addi t0, t3, 0
+	bne t3, s1, else_28
+	mul t4, t2, t0
+	addi t2, t4, 0
+	jal x0, endif_29
+else_28:
+endif_29:
+	mul t4, t0, t0
+	addi t0, t4, 0
 	srli t0, t1, 1
 	addi t1, t0, 0
-while_continue_29:
-	jal x0, while_start_28
-while_end_30:
+while_continue_26:
+	jal x0, while_start_25
+while_end_27:
 	addi a0, t2, 0
 	jal x0, power_return
-
 power_return:
 	lw s0, 8(sp)
 	lw s1, 4(sp)
-	lw s2, 0(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
@@ -322,202 +263,150 @@ complexFunction:
 	addi t3, x0, 0
 	slt t4, t1, t0
 	slt s1, t2, t1
-	beq t4, x0, and_false_33
-	beq s1, x0, and_false_33
+	beq t4, x0, and_false_32
+	beq s1, x0, and_false_32
 	addi t4, x0, 1
-	jal x0, and_end_34
-and_false_33:
+	jal x0, and_end_33
+and_false_32:
 	addi t4, x0, 0
-and_end_34:
-	sub s1, t4, x0
-	sltiu s1, s1, 1
-	beq s1, x0, else_35
-	mul t4, t0, t1
-	addi s1, x0, -1
-	add s2, t2, s1
+and_end_33:
+	bne t4, x0, else_30
+	mul s1, t0, t1
+	addi t4, x0, -1
+	add s2, t2, t4
 	addi s3, x0, 0
-	sub s1, s3, s2
-	sub s4, t4, s1
+	sub t4, s3, s2
+	sub s4, s1, t4
 	addi t3, s4, 0
-	jal x0, endif_36
-else_35:
+	jal x0, endif_31
+else_30:
 	slt t4, t0, t2
 	sub s4, t4, x0
 	sltiu s4, s4, 1
-	slt s1, t2, t1
-	bne s4, x0, or_true_37
-	bne s1, x0, or_true_37
-	addi t4, x0, 0
-	jal x0, or_end_38
-or_true_37:
-	addi t4, x0, 1
-or_end_38:
-	beq t4, x0, else_39
-	sub s1, t2, t1
-	addi t4, x0, -2
-	sub s4, s1, t4
-	mul s2, t0, s4
+	bne s4, x0, or_true_36
+	bge t2, t1, else_34
+or_true_36:
+	sub t4, t2, t1
+	addi s4, x0, -2
+	sub s1, t4, s4
+	mul s2, t0, s1
 	addi t3, s2, 0
-	jal x0, endif_40
-else_39:
+	jal x0, endif_35
+else_34:
 	slt t4, t1, t0
 	sub s2, t4, x0
 	sltiu s2, s2, 1
-	slt s4, t0, t2
-	sub t4, s4, x0
+	slt s1, t0, t2
+	sub t4, s1, x0
 	sltiu t4, t4, 1
-	beq s2, x0, and_false_41
-	beq t4, x0, and_false_41
+	beq s2, x0, and_false_40
+	beq t4, x0, and_false_40
 	addi s2, x0, 1
-	jal x0, and_end_42
-and_false_41:
+	jal x0, and_end_41
+and_false_40:
 	addi s2, x0, 0
-and_end_42:
+and_end_41:
+	bne s2, x0, or_true_39
+	blt t2, t1, else_37
+or_true_39:
+	mul t4, t1, t0
+	addi s2, x0, -3
+	add s1, t2, s2
+	addi s4, x0, 0
+	sub s2, s4, s1
+	sub s3, t4, s2
+	addi t3, s3, 0
+	jal x0, endif_38
+else_37:
 	slt t4, t2, t1
-	sub s4, t4, x0
-	sltiu s4, s4, 1
-	bne s2, x0, or_true_43
-	bne s4, x0, or_true_43
+	bne t4, x0, or_true_44
+	bge t0, t2, else_42
+	blt t1, t0, else_42
+or_true_44:
+	sub t4, t2, t0
+	addi s3, x0, -4
+	sub s2, t4, s3
+	mul s1, t1, s2
+	addi t3, s1, 0
+	jal x0, endif_43
+else_42:
+	slt t4, t0, t2
+	sub s1, t1, t0
+	sub s2, s1, x0
+	sltu s2, x0, s2
+	bne t4, x0, or_true_47
+	bne s2, x0, or_true_47
 	addi t4, x0, 0
-	jal x0, or_end_44
-or_true_43:
+	jal x0, or_end_48
+or_true_47:
 	addi t4, x0, 1
-or_end_44:
-	beq t4, x0, else_45
-	mul s4, t1, t0
-	addi t4, x0, -3
-	add s2, t2, t4
-	addi s1, x0, 0
-	sub t4, s1, s2
-	sub s3, s4, t4
+or_end_48:
+	bne t4, x0, else_45
+	bne t0, t1, else_45
+	mul t4, t2, t0
+	addi s2, x0, -5
+	add s1, t1, s2
+	sub s3, t4, s1
 	addi t3, s3, 0
 	jal x0, endif_46
 else_45:
-	slt t4, t2, t1
-	slt s3, t0, t2
-	slt s4, t1, t0
-	sub s2, s4, x0
-	sltiu s2, s2, 1
-	beq s3, x0, and_false_47
-	beq s2, x0, and_false_47
-	addi s3, x0, 1
-	jal x0, and_end_48
-and_false_47:
-	addi s3, x0, 0
-and_end_48:
-	bne t4, x0, or_true_49
-	bne s3, x0, or_true_49
-	addi t4, x0, 0
-	jal x0, or_end_50
-or_true_49:
-	addi t4, x0, 1
-or_end_50:
-	beq t4, x0, else_51
-	sub s3, t2, t0
-	addi t4, x0, -4
-	sub s2, s3, t4
-	mul s4, t1, s2
-	addi t3, s4, 0
-	jal x0, endif_52
-else_51:
-	slt t4, t0, t2
-	sub s4, t1, t0
-	sub s2, s4, x0
-	sltu s2, x0, s2
-	bne t4, x0, or_true_53
-	bne s2, x0, or_true_53
-	addi t4, x0, 0
-	jal x0, or_end_54
-or_true_53:
-	addi t4, x0, 1
-or_end_54:
-	sub s2, t4, x0
-	sltiu s2, s2, 1
-	sub s4, t0, t1
-	sub t4, s4, x0
-	sltiu t4, t4, 1
-	beq s2, x0, and_false_55
-	beq t4, x0, and_false_55
-	addi s2, x0, 1
-	jal x0, and_end_56
-and_false_55:
-	addi s2, x0, 0
-and_end_56:
-	beq s2, x0, else_57
-	mul t4, t2, t0
-	addi s2, x0, -5
-	add s4, t1, s2
-	sub s3, t4, s4
-	addi t3, s3, 0
-	jal x0, endif_58
-else_57:
 	addi t4, x0, 0
 	sub s3, t4, t0
-	sub s4, t1, s3
+	sub s1, t1, s3
 	addi t0, x0, -6
-	sub t1, s4, t0
+	sub t1, s1, t0
 	mul t4, t2, t1
 	addi t3, t4, 0
-endif_58:
-endif_52:
 endif_46:
-endif_40:
-endif_36:
+endif_43:
+endif_38:
+endif_35:
+endif_31:
 	addi t4, x0, 0
-while_start_59:
+while_start_49:
 	addi t2, x0, 10
-	slt t1, t4, t2
-	beq t1, x0, while_end_61
-	addi t2, x0, 1
-	add t1, t4, t2
-	addi t4, t1, 0
-	addi t2, x0, 3
-	rem t1, t4, t2
+	bge t4, t2, while_end_51
+	addi t1, x0, 1
+	add t2, t4, t1
+	addi t4, t2, 0
+	addi t1, x0, 3
+	rem t2, t4, t1
 	addi t0, x0, 0
-	sub t2, t1, t0
-	sub s4, t2, x0
-	sltiu s4, s4, 1
-	beq s4, x0, else_62
-	add t2, t3, t4
-	addi t3, t2, 0
-	jal x0, endif_63
-else_62:
-	addi t2, x0, 3
-	rem t1, t4, t2
+	bne t2, t0, else_52
+	add t1, t3, t4
+	addi t3, t1, 0
+	jal x0, endif_53
+else_52:
+	addi t1, x0, 3
+	rem t2, t4, t1
 	addi t0, x0, 1
-	sub t2, t1, t0
-	sub s4, t2, x0
-	sltiu s4, s4, 1
-	beq s4, x0, else_64
-	sub t2, t3, t4
-	addi t3, t2, 0
-	jal x0, endif_65
-else_64:
-	slli t2, t3, 1
-	addi t3, t2, 0
+	bne t2, t0, else_54
+	sub t1, t3, t4
+	addi t3, t1, 0
+	jal x0, endif_55
+else_54:
+	slli t1, t3, 1
+	addi t3, t1, 0
 	addi t4, x0, 50
-	slt t2, t3, t4
-	beq t2, x0, else_66
-	jal x0, while_continue_60
-else_66:
-endif_67:
-	addi t2, x0, 1
-	add t4, t3, t2
-	addi t3, t4, 0
-	addi t2, x0, 100
-	slt t4, t2, t3
-	beq t4, x0, else_68
-	jal x0, while_end_61
-else_68:
-endif_69:
-endif_65:
-endif_63:
-while_continue_60:
-	jal x0, while_start_59
-while_end_61:
+	bge t3, t4, else_56
+	jal x0, while_continue_50
+else_56:
+endif_57:
+	addi t4, x0, 1
+	add t1, t3, t4
+	addi t3, t1, 0
+	addi t4, x0, 100
+	bge t4, t3, else_58
+	jal x0, while_end_51
+else_58:
+endif_59:
+endif_55:
+endif_53:
+while_continue_50:
+	jal x0, while_start_49
+while_end_51:
 	addi a0, t3, 0
 	jal x0, complexFunction_return
-
 complexFunction_return:
 	lw s0, 24(sp)
 	lw s1, 20(sp)
@@ -530,47 +419,30 @@ complexFunction_return:
 shortCircuit:
 	addi sp, sp, -16
 	sw s0, 8(sp)
-	sw s1, 4(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, a1, 0
 	addi t2, x0, 0
-	slt t3, t2, t0
-	div t4, t1, t0
+	bge t2, t0, else_60
+	div t3, t1, t0
 	addi t2, x0, 2
-	slt s1, t2, t4
-	beq t3, x0, and_false_70
-	beq s1, x0, and_false_70
-	addi t3, x0, 1
-	jal x0, and_end_71
-and_false_70:
+	bge t2, t3, else_60
+	jal x0, endif_61
+else_60:
+endif_61:
 	addi t3, x0, 0
-and_end_71:
-	beq t3, x0, else_72
-	jal x0, endif_73
-else_72:
-endif_73:
-	addi t3, x0, 0
-	slt t4, t0, t3
-	addi t2, x0, 0
-	slt t0, t1, t2
-	bne t4, x0, or_true_74
-	bne t0, x0, or_true_74
-	addi t4, x0, 0
-	jal x0, or_end_75
-or_true_74:
-	addi t4, x0, 1
-or_end_75:
-	beq t4, x0, else_76
-	jal x0, endif_77
-else_76:
-endif_77:
+	slt t2, t0, t3
+	bne t2, x0, or_true_64
+	addi t0, x0, 0
+	bge t1, t0, else_62
+or_true_64:
+	jal x0, endif_63
+else_62:
+endif_63:
 	addi a0, x0, 0
 	jal x0, shortCircuit_return
-
 shortCircuit_return:
 	lw s0, 8(sp)
-	lw s1, 4(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
@@ -583,65 +455,56 @@ nestedLoopsAndConditions:
 	addi t0, a0, 0
 	addi t1, x0, 0
 	addi t2, x0, 0
-while_start_78:
-	slt t3, t2, t0
-	beq t3, x0, while_end_80
-	addi t0, x0, 0
-while_start_81:
-	slt t3, t0, t2
-	beq t3, x0, while_end_83
-	add t4, t2, t0
-	addi t3, x0, 2
-	rem s1, t4, t3
+while_start_65:
+	bge t2, t0, while_end_67
+	addi t3, x0, 0
+while_start_68:
+	bge t3, t2, while_end_70
+	add t0, t2, t3
+	addi t4, x0, 2
+	rem s1, t0, t4
 	addi s2, x0, 0
-	sub t4, s1, s2
-	sub t3, t4, x0
-	sltiu t3, t3, 1
-	beq t3, x0, else_84
-	mul t4, t2, t0
-	sub t3, t1, t4
-	addi t1, t3, 0
-	jal x0, endif_85
-else_84:
-	mul t3, t2, t0
-	add t4, t1, t3
+	bne s1, s2, else_71
+	mul t0, t2, t3
+	sub t4, t1, t0
 	addi t1, t4, 0
-	addi t3, x0, 0
-	slt t4, t1, t3
-	beq t4, x0, else_86
-	addi t3, x0, 0
-	addi t1, t3, 0
-	jal x0, while_continue_82
-else_86:
-endif_87:
-endif_85:
-	addi t3, x0, 1053
-	slt t4, t3, t1
-	beq t4, x0, else_88
-	jal x0, while_end_83
-else_88:
-endif_89:
-	addi t4, x0, 1
-	add t3, t0, t4
-	addi t0, t3, 0
-while_continue_82:
-	jal x0, while_start_81
-while_end_83:
-	addi t3, x0, 913
-	slt t0, t3, t1
-	beq t0, x0, else_90
-	jal x0, while_end_80
-else_90:
-endif_91:
+	jal x0, endif_72
+else_71:
+	mul t4, t2, t3
+	add t0, t1, t4
+	addi t1, t0, 0
+	addi t4, x0, 0
+	bge t1, t4, else_73
+	addi t0, x0, 0
+	addi t1, t0, 0
+	jal x0, while_continue_69
+else_73:
+endif_74:
+endif_72:
+	addi t0, x0, 1053
+	bge t0, t1, else_75
+	jal x0, while_end_70
+else_75:
+endif_76:
 	addi t0, x0, 1
-	add t3, t2, t0
+	add t4, t3, t0
+	addi t3, t4, 0
+while_continue_69:
+	jal x0, while_start_68
+while_end_70:
+	addi t4, x0, 913
+	bge t4, t1, else_77
+	jal x0, while_end_67
+else_77:
+endif_78:
+	addi t4, x0, 1
+	add t3, t2, t4
 	addi t2, t3, 0
-while_continue_79:
-	jal x0, while_start_78
-while_end_80:
+while_continue_66:
+	jal x0, while_start_65
+while_end_67:
 	addi a0, t1, 0
 	jal x0, nestedLoopsAndConditions_return
-
 nestedLoopsAndConditions_return:
 	lw s0, 8(sp)
 	lw s1, 4(sp)
@@ -658,31 +521,26 @@ func1:
 	sw s3, 12(sp)
 	sw s4, 8(sp)
 	sw s5, 4(sp)
-	sw s6, 0(sp)
 	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, a2, 0
 	addi s4, x0, 0
-	sub s5, s3, s4
-	sub s6, s5, x0
-	sltiu s6, s6, 1
-	beq s6, x0, else_92
+	bne s3, s4, else_79
 	mul s5, s1, s2
 	addi a0, s5, 0
 	jal x0, func1_return
-else_92:
+else_79:
 	sub s5, s2, s3
-	addi s6, x0, 0
+	addi s4, x0, 0
 	addi a0, s1, 0
 	addi a1, s5, 0
-	addi a2, s6, 0
+	addi a2, s4, 0
 	jal ra, func1
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, func1_return
-endif_93:
-
+endif_80:
 func1_return:
 	lw ra, 28(sp)
 	lw s0, 24(sp)
@@ -691,7 +549,6 @@ func1_return:
 	lw s3, 12(sp)
 	lw s4, 8(sp)
 	lw s5, 4(sp)
-	lw s6, 0(sp)
 	addi sp, sp, 32
 	jalr x0, ra, 0
 
@@ -706,7 +563,7 @@ func2:
 	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
-	beq s2, x0, else_94
+	beq s2, x0, else_81
 	rem s3, s1, s2
 	addi s4, x0, 0
 	addi a0, s3, 0
@@ -715,11 +572,10 @@ func2:
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, func2_return
-else_94:
+else_81:
 	addi a0, s1, 0
 	jal x0, func2_return
-endif_95:
-
+endif_82:
 func2_return:
 	lw ra, 28(sp)
 	lw s0, 24(sp)
@@ -738,30 +594,25 @@ func3:
 	sw s2, 16(sp)
 	sw s3, 12(sp)
 	sw s4, 8(sp)
-	sw s5, 4(sp)
 	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, x0, 0
-	sub s4, s2, s3
-	sub s5, s4, x0
-	sltiu s5, s5, 1
-	beq s5, x0, else_96
+	bne s2, s3, else_83
 	addi s4, x0, 1
-	add s5, s1, s4
-	addi a0, s5, 0
+	add s3, s1, s4
+	addi a0, s3, 0
 	jal x0, func3_return
-else_96:
-	add s5, s1, s2
+else_83:
+	add s3, s1, s2
 	addi s4, x0, 0
-	addi a0, s5, 0
+	addi a0, s3, 0
 	addi a1, s4, 0
 	jal ra, func3
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, func3_return
-endif_97:
-
+endif_84:
 func3_return:
 	lw ra, 28(sp)
 	lw s0, 24(sp)
@@ -769,7 +620,6 @@ func3_return:
 	lw s2, 16(sp)
 	lw s3, 12(sp)
 	lw s4, 8(sp)
-	lw s5, 4(sp)
 	addi sp, sp, 32
 	jalr x0, ra, 0
 
@@ -780,14 +630,13 @@ func4:
 	addi t0, a0, 0
 	addi t1, a1, 0
 	addi t2, a2, 0
-	beq t0, x0, else_98
+	beq t0, x0, else_85
 	addi a0, t1, 0
 	jal x0, func4_return
-else_98:
+else_85:
 	addi a0, t2, 0
 	jal x0, func4_return
-endif_99:
-
+endif_86:
 func4_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
@@ -802,7 +651,6 @@ func5:
 	sub t2, t1, t0
 	addi a0, t2, 0
 	jal x0, func5_return
-
 func5_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
@@ -814,21 +662,14 @@ func6:
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, a1, 0
-	beq t0, x0, and_false_100
-	beq t1, x0, and_false_100
-	addi t0, x0, 1
-	jal x0, and_end_101
-and_false_100:
-	addi t0, x0, 0
-and_end_101:
-	beq t0, x0, else_102
+	beq t0, x0, else_87
+	beq t1, x0, else_87
 	addi a0, x0, 1
 	jal x0, func6_return
-else_102:
+else_87:
 	addi a0, x0, 0
 	jal x0, func6_return
-endif_103:
-
+endif_88:
 func6_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
@@ -839,38 +680,34 @@ func7:
 	sw s0, 8(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
-	sub t1, t0, x0
-	sltiu t1, t1, 1
-	beq t1, x0, else_104
+	bne t0, x0, else_89
 	addi a0, x0, 1
 	jal x0, func7_return
-else_104:
+else_89:
 	addi a0, x0, 0
 	jal x0, func7_return
-endif_105:
-
+endif_90:
 func7_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
 nestedCalls:
-	addi sp, sp, -80
-	sw ra, 76(sp)
-	sw s0, 72(sp)
-	sw s0, 68(sp)
-	sw s1, 64(sp)
-	sw s10, 60(sp)
-	sw s11, 56(sp)
-	sw s2, 52(sp)
-	sw s3, 48(sp)
-	sw s4, 44(sp)
-	sw s5, 40(sp)
-	sw s6, 36(sp)
-	sw s7, 32(sp)
-	sw s8, 28(sp)
-	sw s9, 24(sp)
-	addi s0, sp, 80
+	addi sp, sp, -64
+	sw ra, 60(sp)
+	sw s0, 56(sp)
+	sw s1, 52(sp)
+	sw s10, 48(sp)
+	sw s11, 44(sp)
+	sw s2, 40(sp)
+	sw s3, 36(sp)
+	sw s4, 32(sp)
+	sw s5, 28(sp)
+	sw s6, 24(sp)
+	sw s7, 20(sp)
+	sw s8, 16(sp)
+	sw s9, 12(sp)
+	addi s0, sp, 64
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, a2, 0
@@ -1031,23 +868,21 @@ nestedCalls:
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, nestedCalls_return
-
 nestedCalls_return:
-	lw ra, 76(sp)
-	lw s0, 72(sp)
-	lw s0, 68(sp)
-	lw s1, 64(sp)
-	lw s10, 60(sp)
-	lw s11, 56(sp)
-	lw s2, 52(sp)
-	lw s3, 48(sp)
-	lw s4, 44(sp)
-	lw s5, 40(sp)
-	lw s6, 36(sp)
-	lw s7, 32(sp)
-	lw s8, 28(sp)
-	lw s9, 24(sp)
-	addi sp, sp, 80
+	lw ra, 60(sp)
+	lw s0, 56(sp)
+	lw s1, 52(sp)
+	lw s10, 48(sp)
+	lw s11, 44(sp)
+	lw s2, 40(sp)
+	lw s3, 36(sp)
+	lw s4, 32(sp)
+	lw s5, 28(sp)
+	lw s6, 24(sp)
+	lw s7, 20(sp)
+	lw s8, 16(sp)
+	lw s9, 12(sp)
+	addi sp, sp, 64
 	jalr x0, ra, 0
 
 main:
@@ -1184,7 +1019,6 @@ main:
 	lw t5, -4(s0)
 	addi a0, t5, 0
 	jal x0, main_return
-
 main_return:
 	lw ra, 12(sp)
 	lw s0, 8(sp)

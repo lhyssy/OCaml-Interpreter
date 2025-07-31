@@ -35,6 +35,10 @@ type instruction =
   | IR_J of string
   | IR_Beqz of vreg * string
   | IR_Bnez of vreg * string
+  | IR_Beq of vreg * vreg * string
+  | IR_Bne of vreg * vreg * string
+  | IR_Blt of vreg * vreg * string
+  | IR_Bge of vreg * vreg * string
   | IR_Call of string
   | IR_Ret
   (* New for stack argument passing *)

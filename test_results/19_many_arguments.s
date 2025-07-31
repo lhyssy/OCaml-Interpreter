@@ -26,7 +26,6 @@ sum8:
 	add t2, t4, s3
 	addi a0, t2, 0
 	jal x0, sum8_return
-
 sum8_return:
 	lw s0, 24(sp)
 	lw s1, 20(sp)
@@ -40,18 +39,17 @@ sum8_return:
 sum16:
 	addi sp, sp, -64
 	sw s0, 56(sp)
-	sw s0, 52(sp)
-	sw s1, 48(sp)
-	sw s10, 44(sp)
-	sw s11, 40(sp)
-	sw s2, 36(sp)
-	sw s3, 32(sp)
-	sw s4, 28(sp)
-	sw s5, 24(sp)
-	sw s6, 20(sp)
-	sw s7, 16(sp)
-	sw s8, 12(sp)
-	sw s9, 8(sp)
+	sw s1, 52(sp)
+	sw s10, 48(sp)
+	sw s11, 44(sp)
+	sw s2, 40(sp)
+	sw s3, 36(sp)
+	sw s4, 32(sp)
+	sw s5, 28(sp)
+	sw s6, 24(sp)
+	sw s7, 20(sp)
+	sw s8, 16(sp)
+	sw s9, 12(sp)
 	addi s0, sp, 64
 	addi t0, a0, 0
 	addi t1, a1, 0
@@ -90,39 +88,36 @@ sum16:
 	add t4, t3, t5
 	addi a0, t4, 0
 	jal x0, sum16_return
-
 sum16_return:
 	lw s0, 56(sp)
-	lw s0, 52(sp)
-	lw s1, 48(sp)
-	lw s10, 44(sp)
-	lw s11, 40(sp)
-	lw s2, 36(sp)
-	lw s3, 32(sp)
-	lw s4, 28(sp)
-	lw s5, 24(sp)
-	lw s6, 20(sp)
-	lw s7, 16(sp)
-	lw s8, 12(sp)
-	lw s9, 8(sp)
+	lw s1, 52(sp)
+	lw s10, 48(sp)
+	lw s11, 44(sp)
+	lw s2, 40(sp)
+	lw s3, 36(sp)
+	lw s4, 32(sp)
+	lw s5, 28(sp)
+	lw s6, 24(sp)
+	lw s7, 20(sp)
+	lw s8, 16(sp)
+	lw s9, 12(sp)
 	addi sp, sp, 64
 	jalr x0, ra, 0
 
 sum32:
 	addi sp, sp, -128
 	sw s0, 120(sp)
-	sw s0, 116(sp)
-	sw s1, 112(sp)
-	sw s10, 108(sp)
-	sw s11, 104(sp)
-	sw s2, 100(sp)
-	sw s3, 96(sp)
-	sw s4, 92(sp)
-	sw s5, 88(sp)
-	sw s6, 84(sp)
-	sw s7, 80(sp)
-	sw s8, 76(sp)
-	sw s9, 72(sp)
+	sw s1, 116(sp)
+	sw s10, 112(sp)
+	sw s11, 108(sp)
+	sw s2, 104(sp)
+	sw s3, 100(sp)
+	sw s4, 96(sp)
+	sw s5, 92(sp)
+	sw s6, 88(sp)
+	sw s7, 84(sp)
+	sw s8, 80(sp)
+	sw s9, 76(sp)
 	addi s0, sp, 128
 	addi t0, a0, 0
 	addi t1, a1, 0
@@ -225,39 +220,36 @@ sum32:
 	add t2, s9, t0
 	addi a0, t2, 0
 	jal x0, sum32_return
-
 sum32_return:
 	lw s0, 120(sp)
-	lw s0, 116(sp)
-	lw s1, 112(sp)
-	lw s10, 108(sp)
-	lw s11, 104(sp)
-	lw s2, 100(sp)
-	lw s3, 96(sp)
-	lw s4, 92(sp)
-	lw s5, 88(sp)
-	lw s6, 84(sp)
-	lw s7, 80(sp)
-	lw s8, 76(sp)
-	lw s9, 72(sp)
+	lw s1, 116(sp)
+	lw s10, 112(sp)
+	lw s11, 108(sp)
+	lw s2, 104(sp)
+	lw s3, 100(sp)
+	lw s4, 96(sp)
+	lw s5, 92(sp)
+	lw s6, 88(sp)
+	lw s7, 84(sp)
+	lw s8, 80(sp)
+	lw s9, 76(sp)
 	addi sp, sp, 128
 	jalr x0, ra, 0
 
 sum64:
 	addi sp, sp, -256
 	sw s0, 248(sp)
-	sw s0, 244(sp)
-	sw s1, 240(sp)
-	sw s10, 236(sp)
-	sw s11, 232(sp)
-	sw s2, 228(sp)
-	sw s3, 224(sp)
-	sw s4, 220(sp)
-	sw s5, 216(sp)
-	sw s6, 212(sp)
-	sw s7, 208(sp)
-	sw s8, 204(sp)
-	sw s9, 200(sp)
+	sw s1, 244(sp)
+	sw s10, 240(sp)
+	sw s11, 236(sp)
+	sw s2, 232(sp)
+	sw s3, 228(sp)
+	sw s4, 224(sp)
+	sw s5, 220(sp)
+	sw s6, 216(sp)
+	sw s7, 212(sp)
+	sw s8, 208(sp)
+	sw s9, 204(sp)
 	addi s0, sp, 256
 	addi t0, a0, 0
 	addi t1, a1, 0
@@ -488,21 +480,19 @@ sum64:
 	add t4, t1, s7
 	addi a0, t4, 0
 	jal x0, sum64_return
-
 sum64_return:
 	lw s0, 248(sp)
-	lw s0, 244(sp)
-	lw s1, 240(sp)
-	lw s10, 236(sp)
-	lw s11, 232(sp)
-	lw s2, 228(sp)
-	lw s3, 224(sp)
-	lw s4, 220(sp)
-	lw s5, 216(sp)
-	lw s6, 212(sp)
-	lw s7, 208(sp)
-	lw s8, 204(sp)
-	lw s9, 200(sp)
+	lw s1, 244(sp)
+	lw s10, 240(sp)
+	lw s11, 236(sp)
+	lw s2, 232(sp)
+	lw s3, 228(sp)
+	lw s4, 224(sp)
+	lw s5, 220(sp)
+	lw s6, 216(sp)
+	lw s7, 212(sp)
+	lw s8, 208(sp)
+	lw s9, 204(sp)
 	addi sp, sp, 256
 	jalr x0, ra, 0
 
@@ -972,7 +962,6 @@ main:
 	rem t0, t3, t1
 	addi a0, t0, 0
 	jal x0, main_return
-
 main_return:
 	lw ra, 348(sp)
 	lw s0, 344(sp)

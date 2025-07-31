@@ -7,7 +7,6 @@ main:
 	addi s0, sp, 16
 	addi a0, x0, 14
 	jal x0, main_return
-
 main_return:
 	lw ra, 12(sp)
 	lw s0, 8(sp)
