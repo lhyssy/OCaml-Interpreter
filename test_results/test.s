@@ -14,6 +14,7 @@ factorial:
 	addi a0, x0, 1
 	jal x0, factorial_return
 else_0:
+endif_1:
 	addi s2, x0, 1
 	sub s3, s1, s2
 	addi a0, s3, 0
@@ -45,11 +46,13 @@ fibonacci:
 	addi a0, x0, 0
 	jal x0, fibonacci_return
 else_2:
+endif_3:
 	addi s2, x0, 1
 	bne s1, s2, else_4
 	addi a0, x0, 1
 	jal x0, fibonacci_return
 else_4:
+endif_5:
 	addi s2, x0, 1
 	sub s3, s1, s2
 	addi a0, s3, 0
@@ -87,6 +90,7 @@ gcd:
 	addi a0, s1, 0
 	jal x0, gcd_return
 else_6:
+endif_7:
 	rem s3, s1, s2
 	addi a0, s2, 0
 	addi a1, s3, 0
@@ -114,11 +118,13 @@ is_prime:
 	addi a0, x0, 0
 	jal x0, is_prime_return
 else_8:
+endif_9:
 	addi t1, x0, 3
 	blt t1, t0, else_10
 	addi a0, x0, 1
 	jal x0, is_prime_return
 else_10:
+endif_11:
 	addi t1, x0, 2
 	rem t2, t0, t1
 	addi t3, x0, 0
@@ -134,6 +140,7 @@ or_true_14:
 	addi a0, x0, 0
 	jal x0, is_prime_return
 else_12:
+endif_13:
 	addi t4, x0, 5
 while_start_15:
 	mul t2, t4, t4
@@ -153,9 +160,11 @@ or_true_20:
 	addi a0, x0, 0
 	jal x0, is_prime_return
 else_18:
+endif_19:
 	addi t2, x0, 6
 	add t3, t4, t2
 	addi t4, t3, 0
+while_continue_16:
 	jal x0, while_start_15
 while_end_17:
 	addi a0, x0, 1
@@ -163,6 +172,20 @@ while_end_17:
 is_prime_return:
 	lw s0, 8(sp)
 	lw s1, 4(sp)
+	addi sp, sp, 16
+	jalr x0, ra, 0
+
+cry:
+	addi sp, sp, -16
+	sw s0, 8(sp)
+	addi s0, sp, 16
+	addi t0, a0, 0
+	li t1, 55555
+	div t2, t1, t0
+	addi a0, t2, 0
+	jal x0, cry_return
+cry_return:
+	lw s0, 8(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
@@ -192,18 +215,24 @@ while_start_21:
 	blt s1, s2, while_end_23
 	addi a0, s2, 0
 	jal ra, is_prime
-	addi t4, a0, 0
-	add s1, t3, t4
-	addi t3, s1, 0
-	addi t4, x0, 1
-	add s1, s2, t4
-	addi s2, s1, 0
+	addi s1, a0, 0
+	add s3, t3, s1
+	addi t3, s3, 0
+	addi s1, x0, 1
+	add s3, s2, s1
+	addi s2, s3, 0
+while_continue_22:
 	jal x0, while_start_21
 while_end_23:
-	add t4, t0, t1
-	add s1, t4, t2
-	add t0, s1, t3
-	addi a0, t0, 0
+	addi s3, x0, 55
+	addi a0, s3, 0
+	jal ra, cry
+	addi t4, a0, 0
+	add s3, t0, t1
+	add s2, s3, t2
+	add t0, s2, t3
+	add t2, t0, t4
+	addi a0, t2, 0
 	jal x0, main_return
 main_return:
 	lw ra, 12(sp)

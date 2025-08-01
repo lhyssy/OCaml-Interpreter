@@ -56,6 +56,10 @@ int is_prime(int n)
     return 1;
 }
 
+int cry(int x){
+    return 55555/x;
+}
+
 int main(){
     int x1 = factorial(6);
 
@@ -70,5 +74,7 @@ int main(){
         cnt = cnt + 1;
     }
 
-    return x1 + x2 + x3 + x4;
+    int x5 = cry(55);
+
+    return x1 + x2 + x3 + x4 + x5;
 }
