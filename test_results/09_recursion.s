@@ -22,7 +22,6 @@ else_0:
 	mul t1, s1, t0
 	addi a0, t1, 0
 	jal x0, fact_return
-endif_1:
 fact_return:
 	lw ra, 28(sp)
 	lw s0, 24(sp)

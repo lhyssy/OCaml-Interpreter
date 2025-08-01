@@ -17,7 +17,6 @@ while_start_0:
 	bne t0, t3, else_3
 	jal x0, while_continue_1
 else_3:
-endif_4:
 	addi t0, x0, 1
 	add t3, t1, t0
 	addi t1, t3, 0

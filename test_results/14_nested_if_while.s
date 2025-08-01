@@ -22,7 +22,6 @@ else_3:
 	add t2, t0, t1
 	addi t0, t2, 0
 endif_4:
-while_continue_1:
 	jal x0, while_start_0
 while_end_2:
 	addi a0, t0, 0

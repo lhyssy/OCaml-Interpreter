@@ -573,7 +573,11 @@ main:
 	addi a6, t5, 0
 	lw t5, -284(s0)
 	addi a7, t5, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, sum16
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi t5, a0, 0
 	sw t5, -152(s0)
 	addi sp, sp, 32
@@ -684,7 +688,11 @@ main:
 	addi a6, t5, 0
 	lw t5, -52(s0)
 	addi a7, t5, 0
+	addi sp, sp, -4
+	sw t5, 4(sp)
 	jal ra, sum32
+	lw t5, 4(sp)
+	addi sp, sp, 4
 	addi t5, a0, 0
 	sw t5, -148(s0)
 	addi sp, sp, 96
@@ -949,7 +957,13 @@ main:
 	addi a6, t5, 0
 	lw t5, -4(s0)
 	addi a7, t5, 0
+	addi sp, sp, -8
+	sw t5, 4(sp)
+	sw t6, 8(sp)
 	jal ra, sum64
+	lw t5, 4(sp)
+	lw t6, 8(sp)
+	addi sp, sp, 8
 	addi t0, a0, 0
 	addi sp, sp, 224
 	lw t5, -128(s0)

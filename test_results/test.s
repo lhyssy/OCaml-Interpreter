@@ -58,7 +58,11 @@ else_4:
 	addi s3, x0, 2
 	sub s2, s1, s3
 	addi a0, s2, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, fibonacci
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi t1, a0, 0
 	add t2, t0, t1
 	addi a0, t2, 0
@@ -177,13 +181,23 @@ main:
 	addi t0, a0, 0
 	addi s1, x0, 10
 	addi a0, s1, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, fibonacci
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi t1, a0, 0
 	addi s1, x0, 420
 	addi s2, x0, 80
 	addi a0, s1, 0
 	addi a1, s2, 0
+	addi sp, sp, -8
+	sw t0, 4(sp)
+	sw t1, 8(sp)
 	jal ra, gcd
+	lw t0, 4(sp)
+	lw t1, 8(sp)
+	addi sp, sp, 8
 	addi t2, a0, 0
 	addi t3, x0, 0
 	addi s2, x0, 1
@@ -191,7 +205,17 @@ while_start_21:
 	addi s1, x0, 100
 	blt s1, s2, while_end_23
 	addi a0, s2, 0
+	addi sp, sp, -16
+	sw t0, 4(sp)
+	sw t1, 8(sp)
+	sw t2, 12(sp)
+	sw t3, 16(sp)
 	jal ra, is_prime
+	lw t0, 4(sp)
+	lw t1, 8(sp)
+	lw t2, 12(sp)
+	lw t3, 16(sp)
+	addi sp, sp, 16
 	addi t4, a0, 0
 	add s1, t3, t4
 	addi t3, s1, 0

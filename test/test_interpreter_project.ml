@@ -1,5 +1,6 @@
 open Interpreter_lib.String_of_ast
 open Interpreter_lib.Optimizer
+open Interpreter_lib.Optimizer2
 open Interpreter_lib.Irgen
 open Interpreter_lib.Codegen
 
@@ -62,7 +63,8 @@ let test_file filename =
   let ast = parse_input in_channel filename in
   let optimized_ast = optimize_program ast in
   let ir_code = generate_ir optimized_ast in
-  let asm_code = generate_riscv ir_code in
+  let optimized_ir_code = optimize_program2 ir_code in
+  let asm_code = generate_riscv optimized_ir_code in
   output_string out_channel asm_code;
   
   if false then (* 可以添加条件来决定是否显示AST和IR *)

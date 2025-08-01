@@ -19,12 +19,10 @@ while_start_2:
 	addi t2, x0, 1
 	sub t3, t0, t2
 	addi t0, t3, 0
-while_continue_3:
 	jal x0, while_start_2
 while_end_4:
 	addi a0, t1, 0
 	jal x0, factorial_return
-endif_1:
 factorial_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
@@ -53,14 +51,17 @@ else_8:
 	sub s2, s1, s3
 	addi s1, s2, 0
 endif_9:
-while_continue_6:
 	jal x0, while_start_5
 while_end_7:
 	addi s2, x0, 8
 	rem t0, s1, s2
 	addi s3, x0, 3
 	addi a0, s3, 0
+	addi sp, sp, -4
+	sw t0, 4(sp)
 	jal ra, factorial
+	lw t0, 4(sp)
+	addi sp, sp, 4
 	addi t1, a0, 0
 	div t2, t0, t1
 	addi a0, t2, 0

@@ -14,7 +14,6 @@ abs:
 else_0:
 	addi a0, t0, 0
 	jal x0, abs_return
-endif_1:
 abs_return:
 	lw s0, 8(sp)
 	addi sp, sp, 16
@@ -44,14 +43,28 @@ compute:
 	mul s7, s2, s3
 	add s8, s1, s7
 	addi a0, s5, 0
+	addi sp, sp, -8
+	sw t0, 4(sp)
+	sw t1, 8(sp)
 	jal ra, abs
+	lw t0, 4(sp)
+	lw t1, 8(sp)
+	addi sp, sp, 8
 	addi s5, a0, 0
 	addi s1, x0, 1
 	add s7, s5, s1
 	div s2, s4, s7
 	sub t2, s8, s2
 	addi a0, s6, 0
+	addi sp, sp, -12
+	sw t0, 4(sp)
+	sw t1, 8(sp)
+	sw t2, 12(sp)
 	jal ra, abs
+	lw t0, 4(sp)
+	lw t1, 8(sp)
+	lw t2, 12(sp)
+	addi sp, sp, 12
 	addi t3, a0, 0
 	addi t4, x0, 1
 	add s6, t3, t4

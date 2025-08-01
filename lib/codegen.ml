@@ -92,6 +92,18 @@ let compute_live_intervals (instrs: instruction list) : live_intervals =
   !intervals
 ;;
 
+let print_live_intervals_and_allocation (intervals: live_intervals) (allocation: (vreg, preg option) Hashtbl.t) =
+  let print_vreg_info vreg interval =
+    Printf.printf "vreg %d: [%d, %d], " vreg interval.start interval.end_of;
+    match Hashtbl.find_opt allocation vreg with
+    | Some (Some preg) -> Printf.printf "allocated to %s\n" (string_of_preg preg);
+    | Some None -> Printf.printf "spilled\n";
+    | None -> Printf.printf "not allocated\n";
+  in
+
+  VRegMap.iter print_vreg_info intervals;
+;;
+
 (* 判断每个vreg是否live across call *)
 let compute_live_across_call (instrs: instruction list) : (vreg, bool) Hashtbl.t =
   let live_across = Hashtbl.create 16 in
@@ -263,7 +275,7 @@ let check_s_regs_usage (instrs : instruction list) (vreg_map : (vreg, preg optio
 ;;
 
 (* 调用函数相关汇编 *)
-let code_of_call func_name (vreg_map : (vreg, preg option) Hashtbl.t) buf live_intervals cnt is_leaf = 
+let code_of_call func_name (vreg_map : (vreg, preg option) Hashtbl.t) buf live_intervals cnt = 
   let reg r =
     match Hashtbl.find vreg_map r with
     | Some preg -> preg
@@ -288,7 +300,7 @@ let code_of_call func_name (vreg_map : (vreg, preg option) Hashtbl.t) buf live_i
   |> List.sort_uniq (fun a b -> compare (string_of_preg a) (string_of_preg b)) in
 
   (* 计算保存t寄存器所需堆栈大小 *)
-  let t_regs_size = if is_leaf then 0 else List.length t_regs * 4 in
+  let t_regs_size = List.length t_regs * 4 in
 
   (* 调整堆栈指针, 保存t寄存器 *)
   if (t_regs_size > 0) then(
@@ -311,7 +323,7 @@ let code_of_call func_name (vreg_map : (vreg, preg option) Hashtbl.t) buf live_i
 ;;
 
 (* IR to Assembly *)
-let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) live_intervals is_leaf =
+let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) live_intervals =
   let counter = ref 0 in
   let out = Buffer.create 1024 in
   let reg r =
@@ -365,16 +377,20 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
     | IR_Bne (r1, r2, l) -> Printf.bprintf out "\tbne %s, %s, %s\n" (reg r1) (reg r2) l
     | IR_Blt (r1, r2, l) -> Printf.bprintf out "\tblt %s, %s, %s\n" (reg r1) (reg r2) l
     | IR_Bge (r1, r2, l) -> Printf.bprintf out "\tbge %s, %s, %s\n" (reg r1) (reg r2) l
-    | IR_Call s -> code_of_call s vreg_map out live_intervals counter is_leaf;
+    | IR_Call s -> code_of_call s vreg_map out live_intervals counter;
     | IR_Ret -> Buffer.add_string out "\tjalr x0, ra, 0\n"
     | IR_Adjust_SP i -> Printf.bprintf out "\taddi sp, sp, %d\n" i
     | IR_Push_Caller_Stack_Arg (rs, offset) -> Printf.bprintf out "\tsw %s, %d(sp)\n" (reg rs) offset
     | IR_Load_Callee_Stack_Arg (rd, offset) -> Printf.bprintf out "\tlw %s, %d(s0)\n" (reg rd) offset
     ;
-    counter := !counter + 1
   in
 
-  List.iter code_of_ir_instr instrs;
+  let code_and_count instr =
+    code_of_ir_instr instr;
+    counter := !counter + 1;
+  in
+
+  List.iter code_and_count instrs;
   Buffer.contents out
 ;;
 
@@ -454,7 +470,7 @@ let generate_riscv (Program_ir prog_ir) =
 
     (* Generate assembly code for the function body *)
     let new_live_intervals = compute_live_intervals rewritten_instrs in
-    let func_asm = code_of_ir rewritten_instrs allocation new_live_intervals is_leaf in
+    let func_asm = code_of_ir rewritten_instrs allocation new_live_intervals in
     Buffer.add_string final_code func_asm;
 
     (* Epilogue: the return label is added here, and jumps from 'ret' statements will land here. *)
