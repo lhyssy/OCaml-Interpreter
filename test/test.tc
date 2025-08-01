@@ -1,10 +1,74 @@
-int main(){
-    int x = 3;
-    int y = 5;
+int factorial(int n)
+{
+    if (n <= 1)
     {
-        int x = 4;
-        y = y + 1; // y的值从语句块外获取，y的值有改变
-        x = x + 1; // x的值从语句块内获取，外部x不改变
+        return 1;
     }
-    return x*y;
+    return n * factorial(n - 1);
+}
+
+int fibonacci(int n)
+{
+    if (n <= 0)
+    {
+        return 0;
+    }
+    if (n == 1)
+    {
+        return 1;
+    }
+    return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+int gcd(int a, int b)
+{
+    if (b == 0)
+    {
+        return a;
+    }
+    return gcd(b, a % b);
+}
+
+int is_prime(int n)
+{
+    if (n <= 1)
+    {
+        return 0;
+    }
+    if (n <= 3)
+    {
+        return 1;
+    }
+    if (n % 2 == 0 || n % 3 == 0)
+    {
+        return 0;
+    }
+
+    int i = 5;
+    while (i * i <= n)
+    {
+        if (n % i == 0 || n % (i + 2) == 0)
+        {
+            return 0;
+        }
+        i = i + 6;
+    }
+    return 1;
+}
+
+int main(){
+    int x1 = factorial(6);
+
+    int x2 = fibonacci(10);
+
+    int x3 = gcd(420, 80);
+
+    int x4 = 0;
+    int cnt = 1;
+    while(cnt <= 100){
+        x4 = x4 + is_prime(cnt);
+        cnt = cnt + 1;
+    }
+
+    return x1 + x2 + x3 + x4;
 }
