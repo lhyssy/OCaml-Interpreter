@@ -27,6 +27,9 @@ type live_interval = {
 }
 type live_intervals = live_interval VRegMap.t
 
+module StringMap = Map.Make(String)
+type label_map = int StringMap.t
+
 (* Helper to get uses and defs for the spill rewriter *)
 let get_vreg_uses_and_defs instr =
   match instr with
@@ -53,7 +56,42 @@ let get_vreg_uses_and_defs instr =
   | _ -> ([], []) (* Should not happen with exhaustive matching *)
 ;;
 
+(* 检测其中的循环部分，并输出循环对应的区间 *)
+let detect_loops (instrs: instruction list) : live_interval list =
+  (* 按顺序检查指令，如果有label，那么将其行号放置于一个map中 *)
+  (* 如果遇见跳转指令，检查当前行以及跳转label行号的大小，如果当前行号大，则建立循环区间记录 *)
+  let label_map = ref StringMap.empty in
+  let loop_list = ref [] in
+  let process_label idx instr = 
+    match instr with
+    | IR_Label label ->
+        label_map := StringMap.add label idx !label_map
+    | _ -> ()
+  in
+
+  List.iteri(fun i instr ->
+    process_label i instr;
+    match instr with
+    | IR_J label ->
+        (try
+          let target_idx = StringMap.find label !label_map in
+          if target_idx < i then
+            loop_list := { start = target_idx; end_of = i } :: !loop_list
+        with Not_found -> ())
+    | IR_Beqz (_, label) | IR_Bnez (_, label) ->
+        (try
+          let target_idx = StringMap.find label !label_map in
+          if target_idx < i then
+            loop_list := { start = target_idx; end_of = i } :: !loop_list
+        with Not_found -> ())
+    | _ -> ()
+  )instrs;
+
+  !loop_list
+;;
+
 let compute_live_intervals (instrs: instruction list) : live_intervals =
+  let loops = detect_loops instrs in
   let intervals = ref VRegMap.empty in
   
   let update_interval vreg idx =
@@ -62,6 +100,18 @@ let compute_live_intervals (instrs: instruction list) : live_intervals =
       with Not_found -> { start = idx; end_of = idx }
     in
     intervals := VRegMap.add vreg { current with end_of = max current.end_of idx } !intervals
+  in
+
+  let expand_new_end (cur_begin:int) (cur_end:int): int = 
+    let get_end loop_interval: int =
+      if cur_begin < loop_interval.start && loop_interval.start <= cur_end then
+        max cur_end loop_interval.end_of
+      else
+        cur_end
+    in
+    List.fold_left (fun acc loop_interval -> 
+      max (get_end loop_interval) acc)
+    cur_end loops
   in
 
   let process_vreg_defs idx defs =
@@ -76,8 +126,9 @@ let compute_live_intervals (instrs: instruction list) : live_intervals =
     try
       update_interval u idx;
       let current = VRegMap.find u !intervals in
-      (* 将结束点扩展到下个定义点+1 *)
-      let new_end = max current.end_of (idx + 2) in 
+      let cur_begin = current.start in
+      let cur_end = max current.end_of idx in
+      let new_end = expand_new_end cur_begin cur_end in
       intervals := VRegMap.add u { current with end_of = new_end } !intervals
     with Not_found -> ()
   ) uses
@@ -256,7 +307,7 @@ let check_s_regs_usage (instrs : instruction list) (vreg_map : (vreg, preg optio
   let reg r =
     match Hashtbl.find vreg_map r with
     | Some preg -> preg
-    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented)")
+    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented, from s_regs usage check)")
   in
   
   let is_s_reg preg = 
@@ -279,7 +330,7 @@ let code_of_call func_name (vreg_map : (vreg, preg option) Hashtbl.t) buf live_i
   let reg r =
     match Hashtbl.find vreg_map r with
     | Some preg -> preg
-    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented)")
+    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented, from call code generation)")
   in
   
   let is_t_reg preg = 
@@ -329,7 +380,7 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
   let reg r =
     match Hashtbl.find vreg_map r with
     | Some preg -> string_of_preg preg
-    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented)")
+    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented, from code_of_ir)")
   in
   let op_to_s = function
     | VReg r -> reg r
@@ -451,9 +502,17 @@ let generate_riscv (Program_ir prog_ir) =
       if total_frame_size <= 16 then 16
       else (total_frame_size + 15) / 16 * 16
     in
+
+    (* Check if the frame size is allocated correctly *)
+    (* Uncomment for debugging
+    Printf.printf "Func name: %s\n" func_def.name;
+    Printf.printf "total_frame_size: %d\n" total_frame_size;
+    Printf.printf "Frame size: %d\n" frame_size;*)
+
+    (* Offsets for saved registers *)
     
     let ra_offset = frame_size - 4 in
-    let s0_offset = frame_size - 8 in
+    let s0_offset = frame_size - 4 - ra_slot_size in
 
     (* Prologue *)
     Printf.bprintf final_code "\taddi sp, sp, -%d\n" frame_size;
@@ -462,14 +521,20 @@ let generate_riscv (Program_ir prog_ir) =
     Printf.bprintf final_code "\tsw s0, %d(sp)\n" s0_offset;
     if s_slot_size > 0 then
       List.iteri (fun i preg ->
-        Printf.bprintf final_code "\tsw %s, %d(sp)\n" (string_of_preg preg) (frame_size - 12 - i * 4)
+        Printf.bprintf final_code "\tsw %s, %d(sp)\n" (string_of_preg preg) 
+        (frame_size - 8 - ra_slot_size - i * 4)
       ) s_regs_save;
     
     (* Set up frame pointer *)
     Printf.bprintf final_code "\taddi s0, sp, %d\n" frame_size;
 
-    (* Generate assembly code for the function body *)
+    (* Calculate new live intervals after rewritten*)
     let new_live_intervals = compute_live_intervals rewritten_instrs in
+    
+    (* Print the function name for debugging *)
+    (*print_live_intervals_and_allocation new_live_intervals allocation;*)
+    
+    (* Generate assembly code for the function body *)
     let func_asm = code_of_ir rewritten_instrs allocation new_live_intervals in
     Buffer.add_string final_code func_asm;
 
@@ -480,7 +545,8 @@ let generate_riscv (Program_ir prog_ir) =
     Printf.bprintf final_code "\tlw s0, %d(sp)\n" s0_offset;
     if s_slot_size > 0 then
       List.iteri (fun i preg ->
-        Printf.bprintf final_code "\tlw %s, %d(sp)\n" (string_of_preg preg) (frame_size - 12 - i * 4)
+        Printf.bprintf final_code "\tlw %s, %d(sp)\n" (string_of_preg preg) 
+        (frame_size - 8 - ra_slot_size - i * 4)
       ) s_regs_save;
     Printf.bprintf final_code "\taddi sp, sp, %d\n" frame_size;
     Buffer.add_string final_code "\tjalr x0, ra, 0\n\n";

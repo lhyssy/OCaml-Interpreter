@@ -2,10 +2,10 @@
 .text
 print:
 	addi sp, sp, -16
-	sw s0, 8(sp)
+	sw s0, 12(sp)
 	addi s0, sp, 16
 print_return:
-	lw s0, 8(sp)
+	lw s0, 12(sp)
 	addi sp, sp, 16
 	jalr x0, ra, 0
 

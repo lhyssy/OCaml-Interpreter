@@ -9,12 +9,12 @@ main:
 while_start_0:
 	addi t1, x0, 10
 	bge t0, t1, while_end_2
-	addi t2, x0, 5
-	bne t0, t2, else_3
+	addi t1, x0, 5
+	bne t0, t1, else_3
 	jal x0, while_end_2
 else_3:
-	addi t2, x0, 1
-	add t1, t0, t2
+	addi t1, x0, 1
+	add t1, t0, t1
 	addi t0, t1, 0
 	jal x0, while_start_0
 while_end_2:
