@@ -8,8 +8,8 @@ abs:
 	addi t1, x0, 0
 	bge t0, t1, else_0
 	addi t1, x0, 0
-	sub t2, t1, t0
-	addi a0, t2, 0
+	sub t1, t1, t0
+	addi a0, t1, 0
 	jal x0, abs_return
 else_0:
 	addi a0, t0, 0
@@ -20,17 +20,16 @@ abs_return:
 	jalr x0, ra, 0
 
 compute:
-	addi sp, sp, -48
-	sw ra, 44(sp)
-	sw s0, 40(sp)
-	sw s1, 36(sp)
-	sw s2, 32(sp)
-	sw s3, 28(sp)
-	sw s4, 24(sp)
-	sw s5, 20(sp)
-	sw s6, 16(sp)
-	sw s7, 12(sp)
-	addi s0, sp, 48
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	sw s4, 8(sp)
+	sw s5, 4(sp)
+	sw s6, 0(sp)
+	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, a2, 0
@@ -39,50 +38,49 @@ compute:
 	addi t0, a5, 0
 	addi s6, a6, 0
 	addi t1, a7, 0
-	mul s7, s2, s3
-	add s2, s1, s7
+	mul s2, s2, s3
+	add s1, s1, s2
 	addi a0, s5, 0
 	addi sp, sp, -8
-	sw t0, 4(sp)
-	sw t1, 8(sp)
+	sw t0, 0(sp)
+	sw t1, 4(sp)
 	jal ra, abs
-	lw t0, 4(sp)
-	lw t1, 8(sp)
+	lw t0, 0(sp)
+	lw t1, 4(sp)
 	addi sp, sp, 8
 	addi s5, a0, 0
-	addi s1, x0, 1
-	add s7, s5, s1
-	div s5, s4, s7
-	sub t2, s2, s5
+	addi s2, x0, 1
+	add s5, s5, s2
+	div s4, s4, s5
+	sub t2, s1, s4
 	addi a0, s6, 0
 	addi sp, sp, -12
-	sw t0, 4(sp)
-	sw t1, 8(sp)
-	sw t2, 12(sp)
+	sw t0, 0(sp)
+	sw t1, 4(sp)
+	sw t2, 8(sp)
 	jal ra, abs
-	lw t0, 4(sp)
-	lw t1, 8(sp)
-	lw t2, 12(sp)
+	lw t0, 0(sp)
+	lw t1, 4(sp)
+	lw t2, 8(sp)
 	addi sp, sp, 12
 	addi t3, a0, 0
 	addi t4, x0, 1
-	add s6, t3, t4
-	rem t3, t0, s6
-	mul t0, t3, t1
-	add t1, t2, t0
-	addi a0, t1, 0
+	add t3, t3, t4
+	rem t0, t0, t3
+	mul t1, t0, t1
+	add t2, t2, t1
+	addi a0, t2, 0
 	jal x0, compute_return
 compute_return:
-	lw ra, 44(sp)
-	lw s0, 40(sp)
-	lw s1, 36(sp)
-	lw s2, 32(sp)
-	lw s3, 28(sp)
-	lw s4, 24(sp)
-	lw s5, 20(sp)
-	lw s6, 16(sp)
-	lw s7, 12(sp)
-	addi sp, sp, 48
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	lw s4, 8(sp)
+	lw s5, 4(sp)
+	lw s6, 0(sp)
+	addi sp, sp, 32
 	jalr x0, ra, 0
 
 main:
