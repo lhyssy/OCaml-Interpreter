@@ -6,8 +6,8 @@ add:
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, a1, 0
-	add t0, t0, t1
-	addi a0, t0, 0
+	add t2, t0, t1
+	addi a0, t2, 0
 	jal x0, add_return
 add_return:
 	lw s0, 12(sp)

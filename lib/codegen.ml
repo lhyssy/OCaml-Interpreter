@@ -130,9 +130,12 @@ let compute_live_intervals (instrs: instruction list) : live_intervals =
       let cur_begin = current.start in
       let cur_end = max current.end_of idx in
       let new_end = expand_new_end cur_begin cur_end in
-      intervals := VRegMap.add u { current with end_of = new_end } !intervals
+      intervals := VRegMap.add u { current with end_of = new_end + 1} !intervals
     with Not_found -> ()
   ) uses
+  (* 这里面+1是一种保护机制，如果去除那么例如斐波那契函数的结果会被影响，就这样*)
+  (* TODO：其实挺希望能够去掉，但是寄存器分配什么的不受影响，从而能过T17 *)
+  (* 已经被这一坨屎搞得没有任何动力了，总之，燃尽了*)
   in
 
   List.iteri (fun i instr ->

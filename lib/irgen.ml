@@ -446,10 +446,13 @@ let rec is_leaf_function_body stmt =
       | None -> true)
   | SDeclare (_, expr) -> is_leaf_function_expr expr
   | SAssign (_, expr) -> is_leaf_function_expr expr
-  | SIf (_, then_s, else_opt) ->
+  | SIf (cond, then_s, else_opt) ->
+      is_leaf_function_expr cond &&
       is_leaf_function_body then_s &&
       (match else_opt with None -> true | Some s -> is_leaf_function_body s)
-  | SWhile (_, body) -> is_leaf_function_body body
+  | SWhile (cond, body) -> 
+      is_leaf_function_expr cond &&
+      is_leaf_function_body body
   | SBlock stmts -> List.for_all is_leaf_function_body stmts
 
 and is_leaf_function_expr expr =

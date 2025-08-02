@@ -56,25 +56,143 @@ int is_prime(int n)
     return 1;
 }
 
-int cry(int x){
-    return 55555/x;
-}
+int main()
+{
+    int a = 1;
+    int b = 2;
+    int c = 3;
+    int d = 4;
 
-int main(){
-    int x1 = factorial(6);
+    int expr1 = ((a + b) * c + (d * a)) / ((b + c) % (a + -d + 2048) + 1) + (a * b * c * (d - 2 - c));
 
-    int x2 = fibonacci(10);
+    int x = 0;
+    int y = 1;
+    int z = 2;
 
-    int x3 = gcd(420, 80);
-
-    int x4 = 0;
-    int cnt = 1;
-    while(cnt <= 100){
-        x4 = x4 + is_prime(cnt);
-        cnt = cnt + 1;
+    int expr2 = 0;
+    if ((x > y) && ((z + 1) == 1))
+    {
+        expr2 = 1;
     }
 
-    int x5 = cry(55);
+    int expr3 = 0;
+    if ((x < y) || ((z + 2) == 2))
+    {
+        expr3 = 1;
+    }
 
-    return x1 + x2 + x3 + x4 + x5;
+    int expr4 = 0;
+    if (!((x > 0 && y < 0) || (z > 0 && x < 0)) && (y > 0 || x < 0))
+    {
+        expr4 = 1;
+    }
+
+    int n1 = 42;
+    int n2 = 56;
+    int n3 = 87;
+
+    int expr5 = factorial(gcd(n2, n3)) + fibonacci(n1 / 5);
+
+    int max_val = 0;
+    if (n1 > n2 && n1 > n3)
+    {
+        max_val = n1;
+    }
+    else if (n2 > n1 && n2 > n3)
+    {
+        max_val = n2;
+    }
+    else
+    {
+        max_val = n3;
+    }
+
+    int sum = 0;
+    int i = 1;
+    while (i <= 10)
+    {
+        if (i % 2 == 0)
+        {
+            sum = sum + i * i;
+        }
+        else if (i % 3 == 0)
+        {
+            sum = sum + i * i * i;
+        }
+        else
+        {
+            sum = sum + i;
+        }
+        i = i + 1;
+    }
+
+    int expr6 = 0;
+    i = 1;
+    while (i <= 5)
+    {
+        int j = 1;
+        int term = 1;
+        while (j <= i)
+        {
+            term = term * j;
+            j = j + 1;
+        }
+        expr6 = expr6 + term;
+        i = i + 1;
+    }
+
+    int expr7 = 0;
+    if (is_prime(n1))
+    {
+        if (is_prime(n2))
+        {
+            expr7 = n1 * n2;
+        }
+        else if (is_prime(n3))
+        {
+            expr7 = n1 * n3;
+        }
+        else
+        {
+            expr7 = n1;
+        }
+    }
+    else if (is_prime(n2))
+    {
+        if (is_prime(n3))
+        {
+            expr7 = n2 * n3;
+        }
+        else
+        {
+            expr7 = n2;
+        }
+    }
+    else if (is_prime(n3))
+    {
+        expr7 = n3;
+    }
+    else
+    {
+        expr7 = n1 + n2 + n3;
+    }
+
+    int expr8 = 0;
+    int num = 2345;
+    int bit_count = 0;
+
+    while (num > 0)
+    {
+        if (num % 2 == 1)
+        {
+            bit_count = bit_count + 1;
+        }
+        num = num / 2;
+    }
+
+    int final_result = expr1 + expr2 + expr3 + expr4 + expr5 + max_val + sum + expr6 + expr7 + bit_count;
+
+    int need = expr5;
+
+    return need;
 }
