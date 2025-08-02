@@ -514,8 +514,14 @@ let generate_riscv (Program_ir prog_ir) =
     (* Check if the frame size is allocated correctly *)
     (* Uncomment for debugging
     Printf.printf "Func name: %s\n" func_def.name;
+    Printf.printf "is_leaf: %b\n" is_leaf;
+    Printf.printf "spill_frame_size: %d\n" spill_frame_size;
+    Printf.printf "ra_slot_size: %d\n" ra_slot_size;
+    Printf.printf "s0_slot_size: %d\n" s0_slot_size;
+    Printf.printf "s_slot_size: %d\n" s_slot_size;
     Printf.printf "total_frame_size: %d\n" total_frame_size;
-    Printf.printf "Frame size: %d\n" frame_size;*)
+    Printf.printf "Frame size: %d\n" frame_size;
+    Printf.printf "\n";*)
 
     (* Offsets for saved registers *)
     
@@ -539,13 +545,12 @@ let generate_riscv (Program_ir prog_ir) =
     (* Calculate new live intervals after rewritten*)
     let new_live_intervals = compute_live_intervals rewritten_instrs in
     
-    (* Print the function name for debugging *)
+    (* Print the allocation table for checking the allocation *)
+    (* Uncomment for debugging
     print_endline ("Function: " ^ func_def.name);
     print_live_intervals_and_allocation new_live_intervals allocation;
     print_endline (string_of_inst_list rewritten_instrs);
-    print_endline "";
-
-    (* Print the allocation table for debugging *)
+    print_endline "";*)
     
     (* Generate assembly code for the function body *)
     let func_asm = code_of_ir rewritten_instrs allocation new_live_intervals in
