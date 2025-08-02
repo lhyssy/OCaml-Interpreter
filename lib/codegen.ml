@@ -1,4 +1,5 @@
 open Ir
+open Irgen
 
 (* 真实寄存器定义 *)
 type preg =
@@ -240,13 +241,20 @@ let rewrite_spills instrs allocation =
       | IR_Sw (s, off, base) -> IR_Sw (map_use s, off, map_use base)
       | IR_Beqz (s, l) -> IR_Beqz (map_use s, l)
       | IR_Bnez (s, l) -> IR_Bnez (map_use s, l)
+      | IR_Beq (r1, r2, l) -> IR_Beq (map_use r1, map_use r2, l)
+      | IR_Bne (r1, r2, l) -> IR_Bne (map_use r1, map_use r2, l)
+      | IR_Blt (r1, r2, l) -> IR_Blt (map_use r1, map_use r2, l)
+      | IR_Bge (r1, r2, l) -> IR_Bge (map_use r1, map_use r2, l)
       | IR_J s -> IR_J s
       | IR_Call s -> IR_Call s
       | IR_Ret -> IR_Ret
       | IR_Adjust_SP i -> IR_Adjust_SP i
       | IR_Push_Caller_Stack_Arg (s, off) -> IR_Push_Caller_Stack_Arg (map_use s, off)
       | IR_Load_Callee_Stack_Arg (d, off) -> IR_Load_Callee_Stack_Arg (map_def d, off)
-      | other -> other
+      | IR_Label s -> IR_Label s
+      | other -> 
+        Printf.eprintf "Warning: Unhandled instruction %s in spill rewriting.\n" (string_of_instruction other);
+        other
     in
     let final_instrs = (List.rev !load_instrs) @ [rewritten_instr] @ !store_instrs in
     acc_instrs @ final_instrs
@@ -532,7 +540,12 @@ let generate_riscv (Program_ir prog_ir) =
     let new_live_intervals = compute_live_intervals rewritten_instrs in
     
     (* Print the function name for debugging *)
-    (*print_live_intervals_and_allocation new_live_intervals allocation;*)
+    print_endline ("Function: " ^ func_def.name);
+    print_live_intervals_and_allocation new_live_intervals allocation;
+    print_endline (string_of_inst_list rewritten_instrs);
+    print_endline "";
+
+    (* Print the allocation table for debugging *)
     
     (* Generate assembly code for the function body *)
     let func_asm = code_of_ir rewritten_instrs allocation new_live_intervals in
