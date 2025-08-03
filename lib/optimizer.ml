@@ -248,13 +248,15 @@ let rec optimize_stmt (stmt, const_env) =
            in
            (SIf (sc, st, se_opt), const_env))
   | SWhile (cond, body) ->
-      let const_env = remove_const const_env stmt in
-      let sc = simplify_expr const_env cond in
-      (match sc with
-       | EInt 0 -> (SEmpty, const_env)
-       | _ -> 
-          let (new_body, _) = optimize_stmt (body, const_env)  in
-          (SWhile (sc, new_body), const_env))
+      let try_cond = simplify_expr const_env cond in(
+      match try_cond with
+      | EInt 0 -> (SEmpty, const_env) (* 如果条件为0，直接删除循环 *)
+      | _ ->
+        let const_env = remove_const const_env stmt in
+        let sc = simplify_expr const_env cond in
+        let (new_body, _) = optimize_stmt (body, const_env) in
+        (SWhile (sc, new_body), const_env)
+      )
   | SBlock stmts ->
       let child_env = { 
         current = VMap.empty; 
