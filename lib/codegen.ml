@@ -179,9 +179,9 @@ let compute_live_across_call (instrs: instruction list) : (vreg, bool) Hashtbl.t
 let t_spill1_vreg = -1
 let t_spill2_vreg = -2
 
-let rewrite_spills instrs allocation =
+let rewrite_spills instrs allocation save_bisas =
   let spill_map = Hashtbl.create 16 in
-  let current_spill_offset = ref (-4) in
+  let current_spill_offset = ref (-save_bisas) in
 
   Hashtbl.iter (fun vreg preg_opt ->
     if preg_opt = None then (
@@ -190,14 +190,13 @@ let rewrite_spills instrs allocation =
     )
   ) allocation;
 
-  let spill_frame_size = abs (!current_spill_offset + 4) in
+  let spill_frame_size = abs (!current_spill_offset + save_bisas) in
 
   let rewritten_instrs = List.fold_left (fun acc_instrs instr ->
     let uses, defs = get_vreg_uses_and_defs instr in
     
     let use_map = Hashtbl.create 2 in
     let load_instrs = ref [] in
-    
     let add_load_for_use vreg =
       if not (Hashtbl.mem use_map vreg) then (
         let temp_vreg =
@@ -257,6 +256,7 @@ let rewrite_spills instrs allocation =
         Printf.eprintf "Warning: Unhandled instruction %s in spill rewriting.\n" (string_of_instruction other);
         other
     in
+
     let final_instrs = (List.rev !load_instrs) @ [rewritten_instr] @ !store_instrs in
     acc_instrs @ final_instrs
   ) [] instrs in
@@ -314,21 +314,28 @@ let linear_scan_allocator (intervals: live_intervals) (live_across_call: (vreg, 
 let check_s_regs_usage (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) =
   try
   let reg r =
-    match Hashtbl.find vreg_map r with
+    match Hashtbl.find_opt vreg_map r with
     | Some preg -> preg
-    | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented, from s_regs usage check)")
+    | None -> None
   in
   
-  let is_s_reg preg = 
-    match preg with
-    | S0 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11 -> true
-    | _ -> false
+  let is_s_reg preg_opt =
+    match preg_opt with
+    | Some (S0 | S1 | S2 | S3 | S4 | S5 | S6 | S7 | S8 | S9 | S10 | S11) -> true
+    | _ -> false 
+  in
+
+  let remove_opt preg_opt =
+    match preg_opt with
+    | Some preg -> preg
+    | _ -> failwith "Failed when removing optionals(check_s_regs_usage)"
   in
 
   instrs
   |> List.concat_map (fun x -> snd (get_vreg_uses_and_defs x))
   |> List.map reg
   |> List.filter is_s_reg
+  |> List.map remove_opt
   |> List.sort_uniq (fun a b -> compare (string_of_preg a) (string_of_preg b))
   with Not_found ->
     failwith "vreg_map does not contain all vregs used in instructions";
@@ -464,11 +471,15 @@ let generate_riscv (Program_ir prog_ir) =
   Buffer.add_string final_code ".text\n";
   
   List.iter (fun func_def ->
-    let return_label = func_def.return_label in 
+    (* 输出函数名 *)
     Printf.bprintf final_code "%s:\n" func_def.name;
     
+    (* 获取函数体并计算变量活跃区间 *)
     let instrs = func_def.body in
     let intervals = compute_live_intervals instrs in
+
+    (* 是否是叶子函数（继承自func_def），在计算保存栈帧等有用 *)
+    let is_leaf = func_def.is_leaf in
 
     (* 新增：分析哪些vreg活跃穿越call *)
     let live_across_call = compute_live_across_call instrs in
@@ -477,36 +488,36 @@ let generate_riscv (Program_ir prog_ir) =
     let (_, other_vregs) =
       VRegMap.partition (fun vreg _ -> vreg >= 0 && vreg <= 8) intervals in
     
-    (* Allocate only the other vregs，传入live_across_call *)
+    (* 分配其他寄存器，其中传入live_across_call *)
     let allocation = linear_scan_allocator other_vregs live_across_call in
     
-    let is_leaf = func_def.is_leaf in
-    
-    let (rewritten_instrs, spill_frame_size) = rewrite_spills instrs allocation in
+    (* 在分配表中添加预涂色的寄存器 *)
+    Hashtbl.add allocation 0 (Some S0); (* FP is s0 *)
+    Hashtbl.add allocation 1 (Some A0);
+    Hashtbl.add allocation 2 (Some A1);
+    Hashtbl.add allocation 3 (Some A2);
+    Hashtbl.add allocation 4 (Some A3);
+    Hashtbl.add allocation 5 (Some A4);
+    Hashtbl.add allocation 6 (Some A5);
+    Hashtbl.add allocation 7 (Some A6);
+    Hashtbl.add allocation 8 (Some A7);
+    Hashtbl.add allocation t_spill1_vreg (Some T5);
+    Hashtbl.add allocation t_spill2_vreg (Some T6);
 
-    (* Add the pre-colored vregs to the allocation table *)
-        Hashtbl.add allocation 0 (Some S0); (* FP is s0 *)
-        Hashtbl.add allocation 1 (Some A0);
-        Hashtbl.add allocation 2 (Some A1);
-        Hashtbl.add allocation 3 (Some A2);
-        Hashtbl.add allocation 4 (Some A3);
-        Hashtbl.add allocation 5 (Some A4);
-        Hashtbl.add allocation 6 (Some A5);
-        Hashtbl.add allocation 7 (Some A6);
-        Hashtbl.add allocation 8 (Some A7);
-        Hashtbl.add allocation t_spill1_vreg (Some T5);
-        Hashtbl.add allocation t_spill2_vreg (Some T6);
-
-    let s_regs_save = check_s_regs_usage rewritten_instrs allocation in
-
+    (* 检查S型寄存器的情况以及ra的使用，决定对应大小 *)
+    let s_regs_save = check_s_regs_usage instrs allocation in
+    let s_slot_size = if func_def.name <> "main" then List.length s_regs_save * 4 else 0 in
     let ra_slot_size = if is_leaf then 0 else 4 in
     let s0_slot_size = 4 in
-    let s_slot_size = if func_def.name <> "main" then List.length s_regs_save * 4 else 0 in
 
-    (* Calculate total frame size *)
+    (* 计算并利用总偏移进行指令重写，并得到溢出帧大小 *)
+    let total_save_bisas = s0_slot_size + s_slot_size + ra_slot_size in
+    let (rewritten_instrs, spill_frame_size) = rewrite_spills instrs allocation total_save_bisas in
+
+    (* 计算帧的总大小 *)
     let total_frame_size = spill_frame_size + ra_slot_size + s0_slot_size + s_slot_size in
     
-    (* Align frame size to 16 bytes *)
+    (* 将帧大小对齐至16字节 *)
     let frame_size =
       if total_frame_size <= 16 then 16
       else (total_frame_size + 15) / 16 * 16
@@ -525,7 +536,6 @@ let generate_riscv (Program_ir prog_ir) =
     Printf.printf "\n";*)
 
     (* Offsets for saved registers *)
-    
     let ra_offset = frame_size - 4 in
     let s0_offset = frame_size - 4 - ra_slot_size in
 
@@ -558,6 +568,7 @@ let generate_riscv (Program_ir prog_ir) =
     Buffer.add_string final_code func_asm;
 
     (* Epilogue: the return label is added here, and jumps from 'ret' statements will land here. *)
+    let return_label = func_def.return_label in 
     Buffer.add_string final_code (return_label ^ ":\n");
     if not is_leaf then
       Printf.bprintf final_code "\tlw ra, %d(sp)\n" ra_offset;

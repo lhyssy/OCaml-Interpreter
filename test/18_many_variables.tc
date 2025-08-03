@@ -10,6 +10,10 @@ int abs(int x)
     }
 }
 
+int echo(int x){
+    return x;
+}
+
 int compute(int a, int b, int c, int d, int e, int f, int g, int h)
 {
     return a + b * c - d / (abs(e) + 1) + f % (abs(g) + 1) * h;
@@ -17,38 +21,38 @@ int compute(int a, int b, int c, int d, int e, int f, int g, int h)
 
 int main()
 {
-    int v1 = 1;
-    int v2 = 2;
-    int v3 = 3;
-    int v4 = 4;
-    int v5 = 5;
-    int v6 = 6;
-    int v7 = 7;
-    int v8 = 8;
-    int v9 = 9;
-    int v10 = 10;
-    int v11 = 11;
-    int v12 = 12;
-    int v13 = 13;
-    int v14 = 14;
-    int v15 = 15;
-    int v16 = 16;
-    int v17 = 17;
-    int v18 = 18;
-    int v19 = 19;
-    int v20 = 20;
-    int v21 = 21;
-    int v22 = 22;
-    int v23 = 23;
-    int v24 = 24;
-    int v25 = 25;
-    int v26 = 26;
-    int v27 = 27;
-    int v28 = 28;
-    int v29 = 29;
-    int v30 = 30;
-    int v31 = 31;
-    int v32 = 32;
+    int v1 = echo(1);
+    int v2 = echo(2);
+    int v3 = echo(3);
+    int v4 = echo(4);
+    int v5 = echo(5);
+    int v6 = echo(6);
+    int v7 = echo(7);
+    int v8 = echo(8);
+    int v9 = echo(9);
+    int v10 = echo(10);
+    int v11 = echo(11);
+    int v12 = echo(12);
+    int v13 = echo(13);
+    int v14 = echo(14);
+    int v15 = echo(15);
+    int v16 = echo(16);
+    int v17 = echo(17);
+    int v18 = echo(18);
+    int v19 = echo(19);
+    int v20 = echo(20);
+    int v21 = echo(21);
+    int v22 = echo(22);
+    int v23 = echo(23);
+    int v24 = echo(24);
+    int v25 = echo(25);
+    int v26 = echo(26);
+    int v27 = echo(27);
+    int v28 = echo(28);
+    int v29 = echo(29);
+    int v30 = echo(30);
+    int v31 = echo(31);
+    int v32 = echo(32);
 
     int sum1 = v1 + v2 + v3 + v4 + v5 + v6 + v7 + v8;
     int sum2 = v9 + v10 + v11 + v12 + v13 + v14 + v15 + v16;
