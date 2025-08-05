@@ -35,9 +35,9 @@ main:
 	addi s0, sp, 16
 	addi t0, x0, 1
 	addi s1, x0, 3
-	addi a0, s1, 0
 	addi sp, sp, -4
 	sw t0, 0(sp)
+	addi a0, s1, 0
 	jal ra, factorial
 	lw t0, 0(sp)
 	addi sp, sp, 4

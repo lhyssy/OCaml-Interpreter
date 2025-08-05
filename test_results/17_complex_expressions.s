@@ -54,9 +54,9 @@ else_4:
 	addi t0, a0, 0
 	addi s2, x0, 2
 	sub s1, s1, s2
-	addi a0, s1, 0
 	addi sp, sp, -4
 	sw t0, 0(sp)
+	addi a0, s1, 0
 	jal ra, fibonacci
 	lw t0, 0(sp)
 	addi sp, sp, 4
@@ -242,12 +242,12 @@ while_end_33:
 while_end_30:
 	addi t2, x0, 0
 	addi s2, x0, 42
-	addi a0, s2, 0
 	addi sp, sp, -16
 	sw t0, 0(sp)
 	sw t1, 4(sp)
 	sw t2, 8(sp)
 	sw t3, 12(sp)
+	addi a0, s2, 0
 	jal ra, is_prime
 	lw t0, 0(sp)
 	lw t1, 4(sp)
@@ -257,12 +257,12 @@ while_end_30:
 	addi s2, a0, 0
 	beq s2, x0, else_34
 	addi s2, x0, 56
-	addi a0, s2, 0
 	addi sp, sp, -16
 	sw t0, 0(sp)
 	sw t1, 4(sp)
 	sw t2, 8(sp)
 	sw t3, 12(sp)
+	addi a0, s2, 0
 	jal ra, is_prime
 	lw t0, 0(sp)
 	lw t1, 4(sp)
@@ -276,12 +276,12 @@ while_end_30:
 	jal x0, endif_37
 else_36:
 	addi s2, x0, 87
-	addi a0, s2, 0
 	addi sp, sp, -16
 	sw t0, 0(sp)
 	sw t1, 4(sp)
 	sw t2, 8(sp)
 	sw t3, 12(sp)
+	addi a0, s2, 0
 	jal ra, is_prime
 	lw t0, 0(sp)
 	lw t1, 4(sp)
@@ -301,12 +301,12 @@ endif_37:
 	jal x0, endif_35
 else_34:
 	addi s2, x0, 56
-	addi a0, s2, 0
 	addi sp, sp, -16
 	sw t0, 0(sp)
 	sw t1, 4(sp)
 	sw t2, 8(sp)
 	sw t3, 12(sp)
+	addi a0, s2, 0
 	jal ra, is_prime
 	lw t0, 0(sp)
 	lw t1, 4(sp)
@@ -316,12 +316,12 @@ else_34:
 	addi s2, a0, 0
 	beq s2, x0, else_40
 	addi s2, x0, 87
-	addi a0, s2, 0
 	addi sp, sp, -16
 	sw t0, 0(sp)
 	sw t1, 4(sp)
 	sw t2, 8(sp)
 	sw t3, 12(sp)
+	addi a0, s2, 0
 	jal ra, is_prime
 	lw t0, 0(sp)
 	lw t1, 4(sp)
@@ -340,12 +340,12 @@ endif_43:
 	jal x0, endif_41
 else_40:
 	addi s2, x0, 87
-	addi a0, s2, 0
 	addi sp, sp, -16
 	sw t0, 0(sp)
 	sw t1, 4(sp)
 	sw t2, 8(sp)
 	sw t3, 12(sp)
+	addi a0, s2, 0
 	jal ra, is_prime
 	lw t0, 0(sp)
 	lw t1, 4(sp)

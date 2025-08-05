@@ -45,6 +45,8 @@ type instruction =
   | IR_Adjust_SP of int (* addi sp, sp, imm *)
   | IR_Push_Caller_Stack_Arg of vreg * int (* sw rs, offset(sp) - for caller pushing args *)
   | IR_Load_Callee_Stack_Arg of vreg * int (* lw rd, offset(s0) - for callee loading args from above frame *)
+  | IR_T_reg_save of int
+  | IR_T_reg_restore of int (* 作为ID使用，防嵌套成分 *)
 ;;
 
 (* 最终得到的，优化过后的IR结构 *)

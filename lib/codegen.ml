@@ -54,6 +54,7 @@ let get_vreg_uses_and_defs instr =
   | IR_Adjust_SP _ -> ([], [])
   | IR_Push_Caller_Stack_Arg (s, _) -> [s], []
   | IR_Load_Callee_Stack_Arg (d, _) -> [], [d]
+  | IR_T_reg_save _ | IR_T_reg_restore _ -> ([], []) (* These are not real instructions *)
   | _ -> ([], []) (* Should not happen with exhaustive matching *)
 ;;
 
@@ -133,7 +134,6 @@ let compute_live_intervals (instrs: instruction list) : live_intervals =
       intervals := VRegMap.add u { current with end_of = new_end } !intervals
     with Not_found -> ()
   ) uses
-  (* 已经被这一坨屎搞得没有任何动力了，总之，燃尽了*)
   in
 
   List.iteri (fun i instr ->
@@ -181,7 +181,7 @@ let t_spill2_vreg = -2
 
 let rewrite_spills instrs allocation save_bisas =
   let spill_map = Hashtbl.create 16 in
-  let current_spill_offset = ref (-save_bisas) in
+  let current_spill_offset = ref (- save_bisas - 4) in
 
   Hashtbl.iter (fun vreg preg_opt ->
     if preg_opt = None then (
@@ -190,7 +190,7 @@ let rewrite_spills instrs allocation save_bisas =
     )
   ) allocation;
 
-  let spill_frame_size = abs (!current_spill_offset + save_bisas) in
+  let spill_frame_size = abs (!current_spill_offset + save_bisas + 4) in
 
   let rewritten_instrs = List.fold_left (fun acc_instrs instr ->
     let uses, defs = get_vreg_uses_and_defs instr in
@@ -252,6 +252,8 @@ let rewrite_spills instrs allocation save_bisas =
       | IR_Push_Caller_Stack_Arg (s, off) -> IR_Push_Caller_Stack_Arg (map_use s, off)
       | IR_Load_Callee_Stack_Arg (d, off) -> IR_Load_Callee_Stack_Arg (map_def d, off)
       | IR_Label s -> IR_Label s
+      | IR_T_reg_save i -> IR_T_reg_save i
+      | IR_T_reg_restore i -> IR_T_reg_restore i
       | other -> 
         Printf.eprintf "Warning: Unhandled instruction %s in spill rewriting.\n" (string_of_instruction other);
         other
@@ -341,8 +343,35 @@ let check_s_regs_usage (instrs : instruction list) (vreg_map : (vreg, preg optio
     failwith "vreg_map does not contain all vregs used in instructions";
 ;;
 
-(* 调用函数相关汇编 *)
-let code_of_call func_name (vreg_map : (vreg, preg option) Hashtbl.t) buf live_intervals cnt = 
+(* TODO：书写函数，收集每一对save/restore所需要保存的t寄存器 *)
+(* 注：需要保存的t寄存器对应的虚拟寄存器，其活期应该横穿整个调用过程 *)
+(* 即start行号小于等于save行号，restore行号小于等于load行号 *)
+
+(* 计算每一个treg_save和treg_load的行号 *)
+let compute_treg_save_intervals (instrs : instruction list) : live_intervals =
+  let intervals = ref VRegMap.empty in
+  let update_interval vreg idx =
+    let current =
+      try VRegMap.find vreg !intervals
+      with Not_found -> { start = idx; end_of = idx }
+    in
+    intervals := VRegMap.add vreg { current with end_of = max current.end_of idx } !intervals
+  in
+
+  List.iteri(fun i instr ->
+    match instr with
+    | IR_T_reg_save id ->
+      update_interval id i;
+    | IR_T_reg_restore id ->
+      update_interval id i;
+    | _ -> ()
+  ) instrs;
+
+  !intervals
+;;
+
+(* 获取treg_save/restore id对应到需要保存的t寄存器列表的哈希表 *)
+let get_treg_save_restore treg_intervals vreg_map live_intervals: (vreg, preg list) Hashtbl.t = 
   let reg r =
     match Hashtbl.find vreg_map r with
     | Some preg -> preg
@@ -355,43 +384,30 @@ let code_of_call func_name (vreg_map : (vreg, preg option) Hashtbl.t) buf live_i
     | _ -> false
   in
 
-  (* 找到live_intervals中区间内有cnt的区间 *)
-  let live_int = List.filter (fun (_, interval) ->
-    interval.start <= !cnt && interval.end_of >= !cnt
-  ) (VRegMap.bindings live_intervals) in
+  let compute_t_regs t_interval live_intervals = 
+    live_intervals
+    |> VRegMap.bindings
+    |> List.filter (fun (_, interval) ->
+      interval.start <= t_interval.start && interval.end_of >= t_interval.end_of
+    )
+    |> List.map (fun x -> reg (fst x))
+    |> List.filter is_t_reg
+    |> List.sort_uniq (fun a b -> compare (string_of_preg a) (string_of_preg b))
+  in
 
-  (* 找到所有活跃的t寄存器 *)
-  let t_regs = live_int
-  |> List.map (fun x -> reg (fst x))
-  |> List.filter is_t_reg
-  |> List.sort_uniq (fun a b -> compare (string_of_preg a) (string_of_preg b)) in
-
-  (* 计算保存t寄存器所需堆栈大小 *)
-  let t_regs_size = List.length t_regs * 4 in
-
-  (* 调整堆栈指针, 保存t寄存器 *)
-  if (t_regs_size > 0) then(
-    Printf.bprintf buf "\taddi sp, sp, -%d\n" t_regs_size;
-    List.iteri (fun i preg ->
-      Printf.bprintf buf "\tsw %s, %d(sp)\n" (string_of_preg preg) (i * 4)
-    ) t_regs;
-  );
-  
-  (* 调用函数 *)
-  Printf.bprintf buf "\tjal ra, %s\n" func_name;
-
-  (* 恢复t寄存器 *)
-  if (t_regs_size > 0) then(
-    List.iteri (fun i preg ->
-      Printf.bprintf buf "\tlw %s, %d(sp)\n" (string_of_preg preg) (i * 4)
-    ) t_regs;
-    Printf.bprintf buf "\taddi sp, sp, %d\n" t_regs_size;
-  );
+  Hashtbl.create 16
+  |> fun tbl ->
+  VRegMap.iter (fun id t_interval ->
+    let t_regs = compute_t_regs t_interval live_intervals in
+    Hashtbl.add tbl id t_regs
+  ) treg_intervals;
+  tbl
 ;;
 
+(* TODO：将调用函数前后保存T寄存器的部分交由IR_T_reg_save/restore管理 *)
+
 (* IR to Assembly *)
-let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) live_intervals =
-  let counter = ref 0 in
+let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) treg_map =
   let out = Buffer.create 1024 in
   let reg r =
     match Hashtbl.find vreg_map r with
@@ -444,20 +460,35 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
     | IR_Bne (r1, r2, l) -> Printf.bprintf out "\tbne %s, %s, %s\n" (reg r1) (reg r2) l
     | IR_Blt (r1, r2, l) -> Printf.bprintf out "\tblt %s, %s, %s\n" (reg r1) (reg r2) l
     | IR_Bge (r1, r2, l) -> Printf.bprintf out "\tbge %s, %s, %s\n" (reg r1) (reg r2) l
-    | IR_Call s -> code_of_call s vreg_map out live_intervals counter;
+    | IR_Call s -> Printf.bprintf out "\tjal ra, %s\n" s;
     | IR_Ret -> Buffer.add_string out "\tjalr x0, ra, 0\n"
     | IR_Adjust_SP i -> Printf.bprintf out "\taddi sp, sp, %d\n" i
     | IR_Push_Caller_Stack_Arg (rs, offset) -> Printf.bprintf out "\tsw %s, %d(sp)\n" (reg rs) offset
     | IR_Load_Callee_Stack_Arg (rd, offset) -> Printf.bprintf out "\tlw %s, %d(s0)\n" (reg rd) offset
+    | IR_T_reg_save id -> 
+      let t_regs = Hashtbl.find treg_map id in
+      let t_regs_size = List.length t_regs * 4 in
+      (* 调整堆栈指针, 保存t寄存器 *)
+      if (t_regs_size > 0) then(
+        Printf.bprintf out "\taddi sp, sp, -%d\n" t_regs_size;
+        List.iteri (fun i preg ->
+          Printf.bprintf out "\tsw %s, %d(sp)\n" (string_of_preg preg) (i * 4)
+        ) t_regs;
+      );
+    | IR_T_reg_restore id -> 
+      let t_regs = Hashtbl.find treg_map id in
+      let t_regs_size = List.length t_regs * 4 in
+      (* 调整堆栈指针, 恢复t寄存器 *)
+      if (t_regs_size > 0) then(
+        List.iteri (fun i preg ->
+          Printf.bprintf out "\tlw %s, %d(sp)\n" (string_of_preg preg) (i * 4)
+        ) t_regs;
+        Printf.bprintf out "\taddi sp, sp, %d\n" t_regs_size;
+      );
     ;
   in
 
-  let code_and_count instr =
-    code_of_ir_instr instr;
-    counter := !counter + 1;
-  in
-
-  List.iter code_and_count instrs;
+  List.iter code_of_ir_instr instrs;
   Buffer.contents out
 ;;
 
@@ -555,6 +586,8 @@ let generate_riscv (Program_ir prog_ir) =
 
     (* Calculate new live intervals after rewritten*)
     let new_live_intervals = compute_live_intervals rewritten_instrs in
+    let treg_intervals = compute_treg_save_intervals rewritten_instrs in
+    let treg_map = get_treg_save_restore treg_intervals allocation new_live_intervals in
     
     (* Print the allocation table for checking the allocation *)
     (* Uncomment for debugging
@@ -564,7 +597,7 @@ let generate_riscv (Program_ir prog_ir) =
     print_endline "";*)
     
     (* Generate assembly code for the function body *)
-    let func_asm = code_of_ir rewritten_instrs allocation new_live_intervals in
+    let func_asm = code_of_ir rewritten_instrs allocation treg_map in
     Buffer.add_string final_code func_asm;
 
     (* Epilogue: the return label is added here, and jumps from 'ret' statements will land here. *)
@@ -584,3 +617,8 @@ let generate_riscv (Program_ir prog_ir) =
   ) prog_ir;
 
   Buffer.contents final_code
+;;
+
+
+(* 已经被这一坨屎搞得没有任何动力了，总之，燃尽了 *)
+(* :( *)

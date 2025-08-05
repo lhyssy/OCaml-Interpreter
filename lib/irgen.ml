@@ -49,6 +49,7 @@ type compile_env = {
   mutable current_loop: (string * string) option;
   mutable current_func_return_label: string;
   mutable instructions: instruction list;
+  mutable t_reg_saves: int;
 }
 
 let init_compile_env () = {
@@ -57,6 +58,7 @@ let init_compile_env () = {
   current_loop = None;
   current_func_return_label = "";
   instructions = [];
+  t_reg_saves = 0;
 }
 
 (* label_count 移动到程序外以防止标签重叠 *)
@@ -98,6 +100,11 @@ let rec compile_expr env expr : vreg =
       let num_reg_args = min 8 (List.length arg_vregs) in
       let num_stack_args = (List.length arg_vregs) - num_reg_args in
       let stack_args_size = num_stack_args * 4 in
+      let cur_t_id = env.t_reg_saves in
+      env.t_reg_saves <- cur_t_id + 1;
+
+      (* 0. 在将参数推入栈前保存t寄存器 *)
+      emit env (IR_T_reg_save cur_t_id);
 
       (* 1. 调整栈指针为栈上传递参数预留空间，并压入栈参数 (如果存在) *)
       if num_stack_args > 0 then begin
@@ -118,14 +125,18 @@ let rec compile_expr env expr : vreg =
 
       (* 3. 调用函数 *)
       emit env (IR_Call func_name);
-      
-      (* 4. 获取返回值 (总是在 a0, 对应 vreg 1) *)
-      emit env (IR_Mv (rd, 1)); 
 
-      (* 5. 恢复栈指针 *)
+      (* 4. 恢复栈指针 *)
       if num_stack_args > 0 then begin
         emit env (IR_Adjust_SP stack_args_size);
       end;
+
+      (* 5. 将t寄存器恢复 *)
+      emit env (IR_T_reg_restore cur_t_id);
+
+      (* 6. 获取返回值 (总是在 a0, 对应 vreg 1) *)
+      emit env (IR_Mv (rd, 1));
+  
       rd
   | EUnop (op, e) ->
       let rs = compile_expr env e in
@@ -523,9 +534,11 @@ let string_of_instruction = function
     let op = if imm >= 0 then "+" else "-" in
     Printf.sprintf "addi sp, sp, %s%d" op (abs imm)
   | IR_Push_Caller_Stack_Arg (rs, offset) ->
-    Printf.sprintf "sw v%d, %d(sp)" rs offset
+    Printf.sprintf "sw v%d, %d(sp) #caller" rs offset
   | IR_Load_Callee_Stack_Arg (rd, offset) ->
-    Printf.sprintf "lw v%d, %d(s0)" rd offset
+    Printf.sprintf "lw v%d, %d(s0) #callee" rd offset
+  | IR_T_reg_save _ -> "# t_reg_save"
+  | IR_T_reg_restore _ -> "# t_reg_restore"
 ;;
 
 let string_of_inst_list li =
