@@ -26,8 +26,13 @@ let add_var stack name value =
   { current = VMap.add name value stack.current; parent = stack.parent }
 ;;
 
-let remove_var stack name =
-  { current = VMap.remove name stack.current; parent = stack.parent }
+let rec remove_var stack name =
+  if VMap.mem name stack.current then
+    { current = VMap.remove name stack.current; parent = stack.parent }
+  else
+    match stack.parent with
+    | Some parent -> { current = stack.current; parent = Some (remove_var parent name) }
+    | None -> stack (* 如果没有父级，则不更新 *)
 ;;
 
 let rec update_stack stack name value =
@@ -66,15 +71,17 @@ let rec remove_const stack stmt =
 ;;
 
 let print_stack stack =
-  let rec aux s =
-    match s with
-    | {current; parent} ->
-        Printf.printf "Current scope: %s\n" (String.concat ", " (VMap.bindings current |> List.map (fun (k, v) -> k ^ ": " ^ string_of_int v)));
-        match parent with
-        | Some p -> aux p
-        | None -> ()
+  let rec string_of_stack st =
+    match st with
+    | {current; parent} -> 
+      let cur_str = String.concat ", " (VMap.bindings current 
+      |> List.map (fun (k, v) -> k ^ ": " ^ string_of_int v)) in
+      match parent with
+      | Some p -> cur_str ^ " | " ^ string_of_stack p
+      | None -> cur_str
   in
-  aux stack
+
+  Printf.printf "Current scope: %s\n" (string_of_stack stack);
 ;;
 
 (* 计算二元运算结果 *)
@@ -217,7 +224,8 @@ let rec optimize_stmt (stmt, const_env) =
       let se = simplify_expr const_env e in
       if not (expr_has_side_effects se) then (SEmpty, const_env) else (SExpr se, const_env)
   | SReturn None -> (SReturn None, const_env)
-  | SReturn (Some e) -> (SReturn (Some (simplify_expr const_env e)), const_env)
+  | SReturn (Some e) -> 
+    (SReturn (Some (simplify_expr const_env e)), const_env)
   | SDeclare (name, e) ->
       let se = simplify_expr const_env e in
       let new_env = 
@@ -238,7 +246,9 @@ let rec optimize_stmt (stmt, const_env) =
       (match sc with
        | EInt n ->
            if n <> 0 then optimize_stmt (then_s, const_env)
-           else (match else_opt with Some s -> optimize_stmt (s, const_env) | None -> (SEmpty, const_env))
+           else (match else_opt with 
+           Some s -> optimize_stmt (s, const_env) 
+           | None -> (SEmpty, const_env))
        | _ ->
            let const_env = remove_const const_env stmt in
            let (st, _) = optimize_stmt (then_s, const_env) in
@@ -508,10 +518,19 @@ let inline_pass (Program funcs) =
 
 (* 优化函数 *)
 let optimize_func (f: func_def) : func_def =
+  (*print_endline ("Optimizing function: " ^ f.name);*)
   let (body1, env1) = optimize_stmt (f.body, new_env_stack () )  in
   let body2 = unroll_loops (body1, env1) in
+  (*
+  print_endline (string_of_stmt "" body2);
+  print_endline "";*)
+  
   let (body3, _) = optimize_stmt (body2, new_env_stack () ) in
   let body4 = dce_pass body3 in
+  (*
+  print_endline (string_of_stmt "" body4);
+  print_endline "";*)
+
   { f with body = body4 }
 
 let optimize_program (Program funcs) =
@@ -526,4 +545,4 @@ let optimize_program (Program funcs) =
     else
       run_to_fixed_point final_p
   in
-  run_to_fixed_point (Program funcs) 
+  run_to_fixed_point (Program funcs)
