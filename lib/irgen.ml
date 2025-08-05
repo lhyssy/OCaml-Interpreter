@@ -110,7 +110,7 @@ let rec compile_expr env expr : vreg =
       if num_stack_args > 0 then begin
         emit env (IR_Adjust_SP (-stack_args_size));
         (* 栈参数从 arg_vregs 的第 8 个元素开始，逆序压栈 (右到左) *)
-        let stack_args = List.filteri (fun i _ -> i >= 8) arg_vregs |> List.rev in
+        let stack_args = List.filteri (fun i _ -> i >= 8) arg_vregs in
         List.iteri (fun i arg_vreg ->
           let offset = i * 4 in (* 偏移量相对于调整后的 sp *)
           emit env (IR_Push_Caller_Stack_Arg (arg_vreg, offset))
