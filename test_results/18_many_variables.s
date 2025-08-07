@@ -7,9 +7,9 @@ abs:
 	addi t0, a0, 0
 	addi t1, x0, 0
 	bge t0, t1, else_0
+	addi a0, t0, 0
 	addi t1, x0, 0
-	sub t1, t1, t0
-	addi a0, t1, 0
+	sub a0, t1, a0
 	jal x0, abs_return
 else_0:
 	addi a0, t0, 0
@@ -80,8 +80,7 @@ compute:
 	add t3, t3, t4
 	rem t0, t0, t3
 	mul t1, t0, t1
-	add t2, t2, t1
-	addi a0, t2, 0
+	add a0, t2, t1
 	jal x0, compute_return
 compute_return:
 	lw ra, 28(sp)

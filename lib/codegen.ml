@@ -414,10 +414,6 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
     | Some preg -> string_of_preg preg
     | None -> failwith ("vreg " ^ string_of_int r ^ " was spilled (not implemented, from code_of_ir)")
   in
-  let op_to_s = function
-    | VReg r -> reg r
-    | Imm i -> string_of_int i
-  in
   let code_of_ir_instr instr = 
     match instr with
     | IR_Label s -> Buffer.add_string out (s ^ ":\n")
@@ -433,8 +429,20 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
         let physical_rs = Hashtbl.find vreg_map rs in
         if physical_rd <> physical_rs then
           Printf.bprintf out "\taddi %s, %s, 0\n" (reg rd) (reg rs)
-    | IR_Add (rd, r1, op2) -> Printf.bprintf out "\tadd %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
-    | IR_Sub (rd, r1, op2) -> Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (op_to_s op2)
+    | IR_Add (rd, r1, op2) -> (
+      match op2 with
+      | VReg r2 ->
+        Printf.bprintf out "\tadd %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+      | Imm i ->
+        Printf.bprintf out "\taddi %s, %s, %d\n" (reg rd) (reg r1) i
+      )
+    | IR_Sub (rd, r1, op2) -> (
+      match op2 with
+      | VReg r2 ->
+        Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
+      | Imm i ->
+        Printf.bprintf out "\taddi %s, %s, -%d\n" (reg rd) (reg r1) i
+      )
     | IR_Mul (rd, r1, r2) -> Printf.bprintf out "\tmul %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
     | IR_Div (rd, r1, r2) -> Printf.bprintf out "\tdiv %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
     | IR_Rem (rd, r1, r2) -> Printf.bprintf out "\trem %s, %s, %s\n" (reg rd) (reg r1) (reg r2)

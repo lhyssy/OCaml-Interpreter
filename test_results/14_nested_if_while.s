@@ -13,14 +13,10 @@ while_start_0:
 	rem t1, t0, t1
 	addi t2, x0, 0
 	bne t1, t2, else_3
-	addi t1, x0, 2
-	add t1, t0, t1
-	addi t0, t1, 0
+	addi t0, t0, 2
 	jal x0, endif_4
 else_3:
-	addi t1, x0, 1
-	add t1, t0, t1
-	addi t0, t1, 0
+	addi t0, t0, 1
 endif_4:
 	jal x0, while_start_0
 while_end_2:

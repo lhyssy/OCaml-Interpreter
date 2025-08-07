@@ -14,11 +14,8 @@ else_0:
 while_start_2:
 	addi t2, x0, 1
 	bge t2, t0, while_end_4
-	mul t2, t1, t0
-	addi t1, t2, 0
-	addi t2, x0, 1
-	sub t2, t0, t2
-	addi t0, t2, 0
+	mul t1, t1, t0
+	addi t0, t0, -1
 	jal x0, while_start_2
 while_end_4:
 	addi a0, t1, 0
@@ -42,8 +39,7 @@ main:
 	lw t0, 0(sp)
 	addi sp, sp, 4
 	addi t1, a0, 0
-	div t0, t0, t1
-	addi a0, t0, 0
+	div a0, t0, t1
 	jal x0, main_return
 main_return:
 	lw ra, 12(sp)

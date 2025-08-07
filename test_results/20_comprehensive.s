@@ -27,8 +27,7 @@ else_0:
 	lw t0, 0(sp)
 	addi sp, sp, 4
 	addi t1, a0, 0
-	add t0, t0, t1
-	addi a0, t0, 0
+	add a0, t0, t1
 	jal x0, fibonacci_return
 fibonacci_return:
 	lw ra, 12(sp)
@@ -53,12 +52,10 @@ gcd:
 	addi a0, s1, 0
 	jal x0, gcd_return
 else_2:
-	rem s1, s1, s2
+	rem a1, s1, s2
 	addi a0, s2, 0
-	addi a1, s1, 0
 	jal ra, gcd
 	addi t0, a0, 0
-	addi a0, t0, 0
 	jal x0, gcd_return
 gcd_return:
 	lw ra, 28(sp)
@@ -118,9 +115,7 @@ or_true_16:
 	addi a0, x0, 0
 	jal x0, isPrime_return
 else_14:
-	addi t2, x0, 6
-	add t2, t1, t2
-	addi t1, t2, 0
+	addi t1, t1, 6
 	jal x0, while_start_11
 while_end_13:
 	addi a0, x0, 1
@@ -139,11 +134,8 @@ factorial:
 while_start_17:
 	addi t2, x0, 0
 	bge t2, t0, while_end_19
-	mul t2, t1, t0
-	addi t1, t2, 0
-	addi t2, x0, 1
-	sub t2, t0, t2
-	addi t0, t2, 0
+	mul t1, t1, t0
+	addi t0, t0, -1
 	jal x0, while_start_17
 while_end_19:
 	addi a0, t1, 0
@@ -198,8 +190,7 @@ else_22:
 	addi sp, sp, 8
 	addi t2, a0, 0
 	mul t1, t1, t2
-	div t0, t0, t1
-	addi a0, t0, 0
+	div a0, t0, t1
 	jal x0, combination_return
 combination_return:
 	lw ra, 28(sp)
@@ -224,15 +215,12 @@ while_start_25:
 	rem t3, t1, t3
 	addi t4, x0, 1
 	bne t3, t4, else_28
-	mul t3, t2, t0
-	addi t2, t3, 0
+	mul t2, t2, t0
 	jal x0, endif_29
 else_28:
 endif_29:
-	mul t3, t0, t0
-	addi t0, t3, 0
-	srli t3, t1, 1
-	addi t1, t3, 0
+	mul t0, t0, t0
+	srli t1, t1, 1
 	jal x0, while_start_25
 while_end_27:
 	addi a0, t2, 0
@@ -267,8 +255,7 @@ and_end_33:
 	add s1, t2, s1
 	addi s2, x0, 0
 	sub s1, s2, s1
-	sub t4, t4, s1
-	addi t3, t4, 0
+	sub t3, t4, s1
 	jal x0, endif_31
 else_30:
 	slt t4, t0, t2
@@ -280,8 +267,7 @@ or_true_36:
 	sub t4, t2, t1
 	addi s1, x0, -2
 	sub t4, t4, s1
-	mul t4, t0, t4
-	addi t3, t4, 0
+	mul t3, t0, t4
 	jal x0, endif_35
 else_34:
 	slt t4, t1, t0
@@ -305,8 +291,7 @@ or_true_39:
 	add s1, t2, s1
 	addi s2, x0, 0
 	sub s1, s2, s1
-	sub t4, t4, s1
-	addi t3, t4, 0
+	sub t3, t4, s1
 	jal x0, endif_38
 else_37:
 	slt t4, t2, t1
@@ -317,8 +302,7 @@ or_true_44:
 	sub t4, t2, t0
 	addi s1, x0, -4
 	sub t4, t4, s1
-	mul t4, t1, t4
-	addi t3, t4, 0
+	mul t3, t1, t4
 	jal x0, endif_43
 else_42:
 	slt t4, t0, t2
@@ -337,8 +321,7 @@ or_end_48:
 	mul t4, t2, t0
 	addi s1, x0, -5
 	add s1, t1, s1
-	sub t4, t4, s1
-	addi t3, t4, 0
+	sub t3, t4, s1
 	jal x0, endif_46
 else_45:
 	addi t4, x0, 0
@@ -346,8 +329,7 @@ else_45:
 	sub t1, t1, t0
 	addi t0, x0, -6
 	sub t1, t1, t0
-	mul t2, t2, t1
-	addi t3, t2, 0
+	mul t3, t2, t1
 endif_46:
 endif_43:
 endif_38:
@@ -357,9 +339,7 @@ endif_31:
 while_start_49:
 	addi t1, x0, 10
 	bge t2, t1, while_end_51
-	addi t1, x0, 1
-	add t1, t2, t1
-	addi t2, t1, 0
+	addi t2, t2, 1
 	addi t1, x0, 0
 	jal x0, while_start_49
 while_end_51:
@@ -384,9 +364,7 @@ shortCircuit:
 	div t3, t1, t0
 	addi t4, x0, 2
 	bge t4, t3, else_52
-	addi t3, x0, 22
-	add t3, t2, t3
-	addi t2, t3, 0
+	addi t2, t2, 22
 	jal x0, endif_53
 else_52:
 endif_53:
@@ -396,9 +374,7 @@ endif_53:
 	addi t0, x0, 0
 	bge t1, t0, else_54
 or_true_56:
-	addi t1, x0, 32
-	add t1, t2, t1
-	addi t2, t1, 0
+	addi t2, t2, 32
 	jal x0, endif_55
 else_54:
 endif_55:
@@ -428,17 +404,14 @@ while_start_60:
 	addi s1, x0, 0
 	bne t4, s1, else_63
 	mul t4, t2, t3
-	sub t4, t1, t4
-	addi t1, t4, 0
+	sub t1, t1, t4
 	jal x0, endif_64
 else_63:
 	mul t4, t2, t3
-	add t4, t1, t4
-	addi t1, t4, 0
+	add t1, t1, t4
 	addi t4, x0, 0
 	bge t1, t4, else_65
-	addi t4, x0, 0
-	addi t1, t4, 0
+	addi t1, x0, 0
 	jal x0, while_continue_61
 else_65:
 endif_64:
@@ -446,9 +419,7 @@ endif_64:
 	bge t4, t1, else_67
 	jal x0, while_end_62
 else_67:
-	addi t4, x0, 1
-	add t4, t3, t4
-	addi t3, t4, 0
+	addi t3, t3, 1
 while_continue_61:
 	jal x0, while_start_60
 while_end_62:
@@ -456,9 +427,7 @@ while_end_62:
 	bge t3, t1, else_69
 	jal x0, while_end_59
 else_69:
-	addi t3, x0, 1
-	add t3, t2, t3
-	addi t2, t3, 0
+	addi t2, t2, 1
 	jal x0, while_start_57
 while_end_59:
 	addi a0, t1, 0
@@ -483,18 +452,14 @@ func1:
 	addi s3, a2, 0
 	addi s4, x0, 0
 	bne s3, s4, else_71
-	mul s4, s1, s2
-	addi a0, s4, 0
+	mul a0, s1, s2
 	jal x0, func1_return
 else_71:
-	sub s2, s2, s3
-	addi s3, x0, 0
+	addi a2, x0, 0
+	sub a1, s2, s3
 	addi a0, s1, 0
-	addi a1, s2, 0
-	addi a2, s3, 0
 	jal ra, func1
 	addi t0, a0, 0
-	addi a0, t0, 0
 	jal x0, func1_return
 func1_return:
 	lw ra, 28(sp)
@@ -507,34 +472,29 @@ func1_return:
 	jalr x0, ra, 0
 
 func2:
-	addi sp, sp, -32
-	sw ra, 28(sp)
-	sw s0, 24(sp)
-	sw s1, 20(sp)
-	sw s2, 16(sp)
-	sw s3, 12(sp)
-	addi s0, sp, 32
+	addi sp, sp, -16
+	sw ra, 12(sp)
+	sw s0, 8(sp)
+	sw s1, 4(sp)
+	sw s2, 0(sp)
+	addi s0, sp, 16
 	addi s1, a0, 0
 	addi s2, a1, 0
 	beq s2, x0, else_73
-	rem s2, s1, s2
-	addi s3, x0, 0
-	addi a0, s2, 0
-	addi a1, s3, 0
+	addi a1, x0, 0
+	rem a0, s1, s2
 	jal ra, func2
 	addi t0, a0, 0
-	addi a0, t0, 0
 	jal x0, func2_return
 else_73:
 	addi a0, s1, 0
 	jal x0, func2_return
 func2_return:
-	lw ra, 28(sp)
-	lw s0, 24(sp)
-	lw s1, 20(sp)
-	lw s2, 16(sp)
-	lw s3, 12(sp)
-	addi sp, sp, 32
+	lw ra, 12(sp)
+	lw s0, 8(sp)
+	lw s1, 4(sp)
+	lw s2, 0(sp)
+	addi sp, sp, 16
 	jalr x0, ra, 0
 
 func3:
@@ -549,18 +509,14 @@ func3:
 	addi s2, a1, 0
 	addi s3, x0, 0
 	bne s2, s3, else_75
-	addi s3, x0, 1
-	add s3, s1, s3
-	addi a0, s3, 0
+	addi a0, s1, 0
+	addi a0, a0, 1
 	jal x0, func3_return
 else_75:
-	add s1, s1, s2
-	addi s2, x0, 0
-	addi a0, s1, 0
-	addi a1, s2, 0
+	addi a1, x0, 0
+	add a0, s1, s2
 	jal ra, func3
 	addi t0, a0, 0
-	addi a0, t0, 0
 	jal x0, func3_return
 func3_return:
 	lw ra, 28(sp)
@@ -594,9 +550,9 @@ func5:
 	sw s0, 12(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
-	addi t1, x0, 0
-	sub t0, t1, t0
 	addi a0, t0, 0
+	addi t0, x0, 0
+	sub a0, t0, a0
 	jal x0, func5_return
 func5_return:
 	lw s0, 12(sp)
@@ -1103,8 +1059,8 @@ else_93:
 	addi sp, sp, -4
 	sw t5, 0(sp)
 	addi sp, sp, -8
-	sw s4, 0(sp)
-	sw s6, 4(sp)
+	sw s6, 0(sp)
+	sw s4, 4(sp)
 	addi a0, s8, 0
 	addi a1, s9, 0
 	addi a2, s5, 0
@@ -1146,8 +1102,7 @@ else_93:
 	sub t0, t0, t2
 	addi t2, x0, 254
 	rem t0, t0, t2
-	add t1, t1, t0
-	addi t5, t1, 0
+	add t5, t1, t0
 	sw t5, -28(s0)
 	lw t5, -28(s0)
 	addi a0, t5, 0

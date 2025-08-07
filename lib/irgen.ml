@@ -3,7 +3,6 @@ open Ir
 open Tool
 
 (* 变量环境 *)
-(* 变量环境 *)
 type var_env = {
   vars: (string, vreg) Hashtbl.t list; (* 变量名 -> 虚拟寄存器 *)
 }
@@ -83,6 +82,9 @@ let fresh_label prefix =
 
 let emit env instr =
   env.instructions <- instr :: env.instructions
+;;
+
+(* 辅助函数：本函数*)
   
 (* 表达式求值，返回存放结果的虚拟寄存器 *)
 let rec compile_expr env expr : vreg =
@@ -263,6 +265,172 @@ let rec compile_expr env expr : vreg =
       rd
 ;;
 
+(* 表达式求值，并将结果返回至虚拟寄存器*)
+let rec compile_expr_vreg env expr dest_vreg = 
+  match expr with
+  | EInt n -> 
+    emit env (IR_Li (dest_vreg, n));
+  | EVar name ->
+      let source_vreg = find_var env.var_env name in
+      emit env (IR_Mv (dest_vreg, source_vreg));
+  | ECall (func_name, args) ->
+      let args_size = List.length args in
+      let args_rev = List.rev args in
+
+      let num_reg_args = min 8 (List.length args) in
+      let num_stack_args = (List.length args) - num_reg_args in
+      let stack_args_size = num_stack_args * 4 in
+
+      let cur_t_id = env.t_reg_saves in
+      env.t_reg_saves <- cur_t_id + 1;
+
+      (* 0. 在将参数推入栈前保存t寄存器 *)
+      emit env (IR_T_reg_save cur_t_id);
+
+      (* 1. 调整栈指针 *)
+      if num_stack_args > 0 then begin
+        emit env (IR_Adjust_SP (-stack_args_size));
+      end;
+
+      (* 2. 计算每个参数的结果，并将结果推入对应位置（倒序）*)
+      List.iteri (fun i arg ->
+        let arg_no = args_size - i - 1 in
+
+        if arg_no >= 8 then
+          let temp_vreg = fresh_vreg env in
+          compile_expr_vreg env arg temp_vreg;
+          let offset = (arg_no - 8) * 4 in (* 偏移量相对于 s0 *)
+          emit env (IR_Push_Caller_Stack_Arg (temp_vreg, offset))
+        else
+          compile_expr_vreg env arg (arg_no + 1) (* a0-a7 对应 vregs 1-8 *)
+      ) args_rev;
+
+      (* 3. 调用函数 *)
+      emit env (IR_Call func_name);
+
+      (* 4. 恢复栈指针 *)
+      if num_stack_args > 0 then begin
+        emit env (IR_Adjust_SP stack_args_size);
+      end;
+
+      (* 5. 将t寄存器恢复 *)
+      emit env (IR_T_reg_restore cur_t_id);
+
+      (* 6. 获取返回值 (总是在 a0, 对应 vreg 1) *)
+      let rd = fresh_vreg env in
+      emit env (IR_Mv (rd, 1));
+  | EUnop (op, e) ->
+      compile_expr_vreg env e dest_vreg;
+      (match op with
+      | Neg ->
+          let zero_vreg = fresh_vreg env in
+          emit env (IR_Li (zero_vreg, 0));
+          emit env (IR_Sub (dest_vreg, zero_vreg, VReg(dest_vreg)));
+      | Not ->
+          emit env (IR_Seqz (dest_vreg, dest_vreg));
+      | Plus -> ()
+      )
+  | EBinop (op, e1, e2) ->
+    match op, e1, e2 with
+      | _, EInt n1, EInt n2 ->
+        (* 直接计算结果 *)
+        let value = match op with
+          | Add -> n1 + n2
+          | Sub -> n1 - n2
+          | Mul -> n1 * n2
+          | Div -> if n2 <> 0 then n1 / n2 else 1 (* 避免除零 *)
+          | Mod -> if n2 <> 0 then n1 mod n2 else 0
+          | Eq -> if n1 = n2 then 1 else 0
+          | Neq -> if n1 <> n2 then 1 else 0
+          | Lt -> if n1 < n2 then 1 else 0
+          | Le -> if n1 <= n2 then 1 else 0
+          | Gt -> if n1 > n2 then 1 else 0
+          | Ge -> if n1 >= n2 then 1 else 0
+          | And -> if n1 <> 0 && n2 <> 0 then 1 else 0
+          | Or -> if n1 <> 0 || n2 <> 0 then 1 else 0
+        in
+        emit env (IR_Li (dest_vreg, value));
+      | Add, _, EInt n when (is_12bit n)-> 
+        compile_expr_vreg env e1 dest_vreg;
+        if(n <> 0) then begin
+          emit env (IR_Add (dest_vreg, dest_vreg, Imm n));
+        end;
+      | Sub, _, EInt n when (is_12bit (-n))-> 
+        compile_expr_vreg env e1 dest_vreg;
+        if(n <> 0) then begin
+          emit env (IR_Sub (dest_vreg, dest_vreg, Imm n));
+        end;
+      | Mul, _, EInt 0 -> 
+        (* x * 0 = 0 *)
+        emit env (IR_Li (dest_vreg, 0));
+      | Mul, _, EInt 1 -> 
+        (* x * 1 = x *)
+        compile_expr_vreg env e1 dest_vreg;
+      | Mul, _, EInt n when is_power_of_two n ->
+        (* 乘以2的幂优化为左移 *)
+        compile_expr_vreg env e1 dest_vreg;
+        let shift = log2 n in
+        emit env (IR_Slli (dest_vreg, dest_vreg, shift));
+      | Div, _, EInt 1 -> 
+        (* x / 1 = x *)
+        compile_expr_vreg env e1 dest_vreg;
+      | Div, _, EInt n when is_power_of_two n ->
+        (* 除以2的幂优化为右移 *)
+        compile_expr_vreg env e1 dest_vreg;
+        let shift = log2 n in
+        emit env (IR_Srli (dest_vreg, dest_vreg, shift));
+      | _, _, _ ->
+      (* 常规情况 *)
+      let r1 = compile_expr env e1 in
+      let r2 = compile_expr env e2 in
+      let rd = dest_vreg in
+      (match op with
+      | Add -> emit env (IR_Add (rd, r1, VReg r2))
+      | Sub -> emit env (IR_Sub (rd, r1, VReg r2))
+      | Mul -> emit env (IR_Mul (rd, r1, r2))
+      | Div -> emit env (IR_Div (rd, r1, r2))
+      | Mod -> emit env (IR_Rem (rd, r1, r2))
+      | Eq ->
+          let t = fresh_vreg env in
+          emit env (IR_Sub (t, r1, VReg r2));
+          emit env (IR_Seqz (rd, t))
+      | Neq ->
+          let t = fresh_vreg env in
+          emit env (IR_Sub (t, r1, VReg r2));
+          emit env (IR_Snez (rd, t))
+      | Lt -> emit env (IR_Slt (rd, r1, r2))
+      | Gt -> emit env (IR_Sgt (rd, r1, r2))
+      | Le ->
+          let t = fresh_vreg env in
+          emit env (IR_Sgt (t, r1, r2));
+          emit env (IR_Seqz (rd, t))
+      | Ge ->
+          let t = fresh_vreg env in
+          emit env (IR_Slt (t, r1, r2));
+          emit env (IR_Seqz (rd, t))
+      | And ->
+          let label_false = fresh_label  "and_false" in
+          let label_end = fresh_label  "and_end" in
+          emit env (IR_Beqz (r1, label_false));
+          emit env (IR_Beqz (r2, label_false));
+          emit env (IR_Li (rd, 1));
+          emit env (IR_J label_end);
+          emit env (IR_Label label_false);
+          emit env (IR_Li (rd, 0));
+          emit env (IR_Label label_end)
+      | Or ->
+          let label_true = fresh_label  "or_true" in
+          let label_end = fresh_label  "or_end" in
+          emit env (IR_Bnez (r1, label_true));
+          emit env (IR_Bnez (r2, label_true));
+          emit env (IR_Li (rd, 0));
+          emit env (IR_J label_end);
+          emit env (IR_Label label_true);
+          emit env (IR_Li (rd, 1));
+          emit env (IR_Label label_end)
+      )
+;;
+
 let rec compile_cond env cond false_label: unit =
   match cond with
   | EUnop (Not, e) ->
@@ -322,8 +490,7 @@ let rec compile_stmt env stmt : unit =
       | EInt n -> 
           emit env (IR_Li (1, n)) (* Optimization: direct load to a0 (vreg 1) *)
       | _ -> 
-          let rv = compile_expr env e in
-          emit env (IR_Mv (1, rv)) (* Move to a0 *)
+        compile_expr_vreg env e 1; (* Move result to a0 (vreg 1) *)
       );
       emit env (IR_J env.current_func_return_label)
   | SReturn None ->
@@ -333,9 +500,8 @@ let rec compile_stmt env stmt : unit =
       let init_vreg = compile_expr env init_expr in
       env.var_env <- add_var env.var_env name init_vreg;
   | SAssign (name, expr) ->
-      let val_vreg = compile_expr env expr in
       let dest_vreg = find_var env.var_env name in
-      emit env (IR_Mv (dest_vreg, val_vreg))
+      compile_expr_vreg env expr dest_vreg;
   | SIf (cond, then_s, else_opt) ->
       let else_label = fresh_label "else" in
       let end_label = fresh_label "endif" in
@@ -378,10 +544,42 @@ let rec compile_stmt env stmt : unit =
     env.var_env <- out_var env.var_env;
 ;;
 
+(* 遍历AST以确定函数是否为叶子函数 (不调用其他函数) *)
+let rec is_leaf_function_body stmt =
+  match stmt with
+  | SEmpty | SBreak | SContinue -> true
+  | SExpr e -> is_leaf_function_expr e
+  | SReturn exp_opt ->
+      (match exp_opt with
+      | Some e -> is_leaf_function_expr e
+      | None -> true)
+  | SDeclare (_, expr) -> is_leaf_function_expr expr
+  | SAssign (_, expr) -> is_leaf_function_expr expr
+  | SIf (cond, then_s, else_opt) ->
+      is_leaf_function_expr cond &&
+      is_leaf_function_body then_s &&
+      (match else_opt with None -> true | Some s -> is_leaf_function_body s)
+  | SWhile (cond, body) -> 
+      is_leaf_function_expr cond &&
+      is_leaf_function_body body
+  | SBlock stmts -> List.for_all is_leaf_function_body stmts
+
+and is_leaf_function_expr expr =
+  match expr with
+  | EInt _ | EVar _ -> true
+  | EUnop (_, e) -> is_leaf_function_expr e
+  | EBinop (_, e1, e2) -> is_leaf_function_expr e1 && is_leaf_function_expr e2
+  | ECall _ -> false
+;;
+
 (* 编译一个函数 *)
 let compile_func (func_def: func_def) return_label =
+  (*let is_leaf = is_leaf_function_body func_def.body in*)
   let env = init_compile_env () in
   env.current_func_return_label <- return_label;
+
+  (* TODO：如果这个函数是叶子函数，那么将所有的参数静态放置于对应位置
+     否则按原样进行*)
 
   (* 处理参数: 将参数从物理寄存器/栈移动到新的虚拟寄存器 *)
   let param_pregs = [1; 2; 3; 4; 5; 6; 7; 8] in (* vregs for a0-a7 *)
@@ -446,34 +644,7 @@ let rec run_peephole_to_fixed_point instrs =
     run_peephole_to_fixed_point optimized_instrs
 ;;
 
-(* 遍历AST以确定函数是否为叶子函数 (不调用其他函数) *)
-let rec is_leaf_function_body stmt =
-  match stmt with
-  | SEmpty | SBreak | SContinue -> true
-  | SExpr e -> is_leaf_function_expr e
-  | SReturn exp_opt ->
-      (match exp_opt with
-      | Some e -> is_leaf_function_expr e
-      | None -> true)
-  | SDeclare (_, expr) -> is_leaf_function_expr expr
-  | SAssign (_, expr) -> is_leaf_function_expr expr
-  | SIf (cond, then_s, else_opt) ->
-      is_leaf_function_expr cond &&
-      is_leaf_function_body then_s &&
-      (match else_opt with None -> true | Some s -> is_leaf_function_body s)
-  | SWhile (cond, body) -> 
-      is_leaf_function_expr cond &&
-      is_leaf_function_body body
-  | SBlock stmts -> List.for_all is_leaf_function_body stmts
-
-and is_leaf_function_expr expr =
-  match expr with
-  | EInt _ | EVar _ -> true
-  | EUnop (_, e) -> is_leaf_function_expr e
-  | EBinop (_, e1, e2) -> is_leaf_function_expr e1 && is_leaf_function_expr e2
-  | ECall _ -> false
-
-(* 将源代码生成为IR形式 *)
+(* --- 将源代码生成为IR形式 --- *)
 let gen_ir_func (func: func_def) = 
   let return_label = func.name ^ "_return" in
   let (instrs, _) = compile_func func return_label in

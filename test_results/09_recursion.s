@@ -18,8 +18,7 @@ else_0:
 	addi a0, s2, 0
 	jal ra, fact
 	addi t0, a0, 0
-	mul t0, s1, t0
-	addi a0, t0, 0
+	mul a0, s1, t0
 	jal x0, fact_return
 fact_return:
 	lw ra, 12(sp)
@@ -34,11 +33,9 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	addi s1, x0, 5
-	addi a0, s1, 0
+	addi a0, x0, 5
 	jal ra, fact
 	addi t0, a0, 0
-	addi a0, t0, 0
 	jal x0, main_return
 main_return:
 	lw ra, 12(sp)
