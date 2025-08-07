@@ -80,11 +80,14 @@ let fresh_label prefix =
   prefix ^ "_" ^ string_of_int l
 ;;
 
-let emit env instr =
+(*let emit env instr =
   env.instructions <- instr :: env.instructions
+;;*)
+
+let emit env instr =
+  env.instructions <- env.instructions @ [instr]
 ;;
 
-(* 辅助函数：本函数*)
   
 (* 表达式求值，返回存放结果的虚拟寄存器 *)
 let rec compile_expr env expr : vreg =
