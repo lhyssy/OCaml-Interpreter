@@ -85,7 +85,7 @@ let fresh_label prefix =
 ;;*)
 
 let emit env instr =
-  env.instructions <- env.instructions @ [instr]
+  env.instructions <- instr :: env.instructions
 ;;
 
   
@@ -162,25 +162,38 @@ let rec compile_expr env expr : vreg =
       (* 常量折叠优化: 如果两个操作数都是常量 *)
       match e1, e2 with
       | EInt n1, EInt n2 ->
-          (* 直接计算结果 *)
-          let rd = fresh_vreg env in
-          let value = match op with
-            | Add -> n1 + n2
-            | Sub -> n1 - n2
-            | Mul -> n1 * n2
-            | Div -> if n2 <> 0 then n1 / n2 else 1 (* 避免除零 *)
-            | Mod -> if n2 <> 0 then n1 mod n2 else 0
-            | Eq -> if n1 = n2 then 1 else 0
-            | Neq -> if n1 <> n2 then 1 else 0
-            | Lt -> if n1 < n2 then 1 else 0
-            | Le -> if n1 <= n2 then 1 else 0
-            | Gt -> if n1 > n2 then 1 else 0
-            | Ge -> if n1 >= n2 then 1 else 0
-            | And -> if n1 <> 0 && n2 <> 0 then 1 else 0
-            | Or -> if n1 <> 0 || n2 <> 0 then 1 else 0
-          in
-          emit env (IR_Li (rd, value));
-          rd
+          (* 直接计算结果；当出现除零/模零时不进行常量折叠，回退到常规生成 *)
+          (match op with
+          | Div | Mod when n2 = 0 ->
+              let r1 = fresh_vreg env in
+              let r2 = fresh_vreg env in
+              emit env (IR_Li (r1, n1));
+              emit env (IR_Li (r2, n2));
+              let rd = fresh_vreg env in
+              (match op with
+              | Div -> emit env (IR_Div (rd, r1, r2))
+              | Mod -> emit env (IR_Rem (rd, r1, r2))
+              | _ -> ());
+              rd
+          | _ ->
+              let rd = fresh_vreg env in
+              let value = match op with
+                | Add -> n1 + n2
+                | Sub -> n1 - n2
+                | Mul -> n1 * n2
+                | Div -> n1 / n2
+                | Mod -> n1 mod n2
+                | Eq -> if n1 = n2 then 1 else 0
+                | Neq -> if n1 <> n2 then 1 else 0
+                | Lt -> if n1 < n2 then 1 else 0
+                | Le -> if n1 <= n2 then 1 else 0
+                | Gt -> if n1 > n2 then 1 else 0
+                | Ge -> if n1 >= n2 then 1 else 0
+                | And -> if n1 <> 0 && n2 <> 0 then 1 else 0
+                | Or -> if n1 <> 0 || n2 <> 0 then 1 else 0
+              in
+              emit env (IR_Li (rd, value));
+              rd)
       | _, _ ->
           (* 不是常量表达式 *)
       let r1 = compile_expr env e1 in
@@ -194,10 +207,10 @@ let rec compile_expr env expr : vreg =
               emit env (IR_Slli (rd, r1, shift));
               rd
           | EInt n when op = Div && is_power_of_two n ->
-              (* 除以2的幂优化为右移 *)
+              let r2 = fresh_vreg env in
+              emit env (IR_Li (r2, n));
               let rd = fresh_vreg env in
-              let shift = log2 n in
-              emit env (IR_Srli (rd, r1, shift));
+              emit env (IR_Div (rd, r1, r2));
               rd
           | EInt 0 when op = Add ->
               (* x + 0 = x *)
@@ -302,10 +315,12 @@ let rec compile_expr_vreg env expr dest_vreg =
         if arg_no >= 8 then
           let temp_vreg = fresh_vreg env in
           compile_expr_vreg env arg temp_vreg;
-          let offset = (arg_no - 8) * 4 in (* 偏移量相对于 s0 *)
+          let offset = (arg_no - 8) * 4 in (* 偏移量相对于 sp *)
           emit env (IR_Push_Caller_Stack_Arg (temp_vreg, offset))
         else
-          compile_expr_vreg env arg (arg_no + 1) (* a0-a7 对应 vregs 1-8 *)
+          let temp_vreg = fresh_vreg env in
+          compile_expr_vreg env arg temp_vreg;
+          emit env (IR_Mv (arg_no + 1, temp_vreg)) (* a0-a7 对应 vregs 1-8 *)
       ) args_rev;
 
       (* 3. 调用函数 *)
@@ -319,9 +334,8 @@ let rec compile_expr_vreg env expr dest_vreg =
       (* 5. 将t寄存器恢复 *)
       emit env (IR_T_reg_restore cur_t_id);
 
-      (* 6. 获取返回值 (总是在 a0, 对应 vreg 1) *)
-      let rd = fresh_vreg env in
-      emit env (IR_Mv (rd, 1));
+      (* 6. 获取返回值 (总是在 a0, 对应 vreg 1) -> 写入目标寄存器 *)
+      emit env (IR_Mv (dest_vreg, 1));
   | EUnop (op, e) ->
       compile_expr_vreg env e dest_vreg;
       (match op with
@@ -336,23 +350,34 @@ let rec compile_expr_vreg env expr dest_vreg =
   | EBinop (op, e1, e2) ->
     match op, e1, e2 with
       | _, EInt n1, EInt n2 ->
-        (* 直接计算结果 *)
-        let value = match op with
-          | Add -> n1 + n2
-          | Sub -> n1 - n2
-          | Mul -> n1 * n2
-          | Div -> if n2 <> 0 then n1 / n2 else 1 (* 避免除零 *)
-          | Mod -> if n2 <> 0 then n1 mod n2 else 0
-          | Eq -> if n1 = n2 then 1 else 0
-          | Neq -> if n1 <> n2 then 1 else 0
-          | Lt -> if n1 < n2 then 1 else 0
-          | Le -> if n1 <= n2 then 1 else 0
-          | Gt -> if n1 > n2 then 1 else 0
-          | Ge -> if n1 >= n2 then 1 else 0
-          | And -> if n1 <> 0 && n2 <> 0 then 1 else 0
-          | Or -> if n1 <> 0 || n2 <> 0 then 1 else 0
-        in
-        emit env (IR_Li (dest_vreg, value));
+        (* 直接计算结果；除零/模零不进行常量折叠，回退到常规情况 *)
+        (match op with
+        | Div | Mod when n2 = 0 ->
+            let r1 = compile_expr env e1 in
+            let r2 = compile_expr env e2 in
+            let rd = dest_vreg in
+            (match op with
+            | Div -> emit env (IR_Div (rd, r1, r2))
+            | Mod -> emit env (IR_Rem (rd, r1, r2))
+            | _ -> ());
+        | _ ->
+            let value = match op with
+              | Add -> n1 + n2
+              | Sub -> n1 - n2
+              | Mul -> n1 * n2
+              | Div -> n1 / n2
+              | Mod -> n1 mod n2
+              | Eq -> if n1 = n2 then 1 else 0
+              | Neq -> if n1 <> n2 then 1 else 0
+              | Lt -> if n1 < n2 then 1 else 0
+              | Le -> if n1 <= n2 then 1 else 0
+              | Gt -> if n1 > n2 then 1 else 0
+              | Ge -> if n1 >= n2 then 1 else 0
+              | And -> if n1 <> 0 && n2 <> 0 then 1 else 0
+              | Or -> if n1 <> 0 || n2 <> 0 then 1 else 0
+            in
+            emit env (IR_Li (dest_vreg, value))
+        );
       | Add, _, EInt n when (is_12bit n)-> 
         compile_expr_vreg env e1 dest_vreg;
         if(n <> 0) then begin
@@ -378,10 +403,11 @@ let rec compile_expr_vreg env expr dest_vreg =
         (* x / 1 = x *)
         compile_expr_vreg env e1 dest_vreg;
       | Div, _, EInt n when is_power_of_two n ->
-        (* 除以2的幂优化为右移 *)
-        compile_expr_vreg env e1 dest_vreg;
-        let shift = log2 n in
-        emit env (IR_Srli (dest_vreg, dest_vreg, shift));
+        (* 为保持有符号除法的正确性，使用通用除法而非移位优化 *)
+        let r1 = compile_expr env e1 in
+        let r2 = fresh_vreg env in
+        emit env (IR_Li (r2, n));
+        emit env (IR_Div (dest_vreg, r1, r2));
       | _, _, _ ->
       (* 常规情况 *)
       let r1 = compile_expr env e1 in

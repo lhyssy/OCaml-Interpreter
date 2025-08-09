@@ -251,9 +251,8 @@ let rewrite_spills instrs allocation save_bisas =
       | IR_Adjust_SP i -> IR_Adjust_SP i
       | IR_Push_Caller_Stack_Arg (s, off) -> IR_Push_Caller_Stack_Arg (map_use s, off)
       | IR_Load_Callee_Stack_Arg (d, off) -> IR_Load_Callee_Stack_Arg (map_def d, off)
-      | IR_Label s -> IR_Label s
-      | IR_T_reg_save i -> IR_T_reg_save i
-      | IR_T_reg_restore i -> IR_T_reg_restore i
+      | IR_T_reg_save id -> IR_T_reg_save id
+      | IR_T_reg_restore id -> IR_T_reg_restore id
       | other -> 
         Printf.eprintf "Warning: Unhandled instruction %s in spill rewriting.\n" (string_of_instruction other);
         other
@@ -441,7 +440,7 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
       | VReg r2 ->
         Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
       | Imm i ->
-        Printf.bprintf out "\taddi %s, %s, -%d\n" (reg rd) (reg r1) i
+        Printf.bprintf out "\taddi %s, %s, %d\n" (reg rd) (reg r1) (-i)
       )
     | IR_Mul (rd, r1, r2) -> Printf.bprintf out "\tmul %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
     | IR_Div (rd, r1, r2) -> Printf.bprintf out "\tdiv %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
