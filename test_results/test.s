@@ -4,9 +4,6 @@ subs:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, a0, 0
-	addi t1, a1, 0
-	sub a0, t0, t1
 	jal x0, subs_return
 subs_return:
 	lw s0, 12(sp)
@@ -18,10 +15,6 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	addi a1, x0, 514
-	addi a0, x0, 114
-	jal ra, subs
-	addi t0, a0, 0
 	jal x0, main_return
 main_return:
 	lw ra, 12(sp)

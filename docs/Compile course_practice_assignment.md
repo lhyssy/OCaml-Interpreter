@@ -131,16 +131,3 @@
 
 **表达式**
 `ToyC` 支持逻辑运算、关系运算、算术运算、括号表达式、变量引用、字面值和函数调用等 C 语言中的常见表达式。运算符的优先级、结合性和计算规则等与 C 语言一致：逻辑与、逻辑或运算符遵循“短路计算”规则；非零视为“真”、零视为“假”；除数不能为零等。
-```
-
-**Notes on the conversion:**
-
-*   I've used Markdown headings (`#`, `##`, `###`) to match the document's structure.
-*   The table of contents is manually created as a list.
-*   Keywords and language elements like `ToyC`, `RISC-V32`, `C++`, `int`, `void`, `if`, `while`, grammar non-terminals (`CompUnit`, `Stmt`, etc.), and terminals (`ID`, `NUMBER`) are enclosed in backticks `` ` `` for inline code formatting.
-*   The grammar rules are placed in a fenced code block with the `ebnf` hint, which might provide syntax highlighting in some Markdown renderers.
-*   The scoring formulas are presented directly in text. I've also added a commented-out LaTeX version, as LaTeX is often used for math and can be rendered by many Markdown tools (like those used on GitHub, or with MathJax/KaTeX). If your Markdown previewer supports LaTeX, you can uncomment those parts for better display.
-*   Regular expressions are also in backticks.
-*   Page numbers and redundant headers/footers from the OCR have been removed.
-
-This should give you a good Markdown representation of the original document.

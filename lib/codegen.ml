@@ -441,7 +441,8 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
       | VReg r2 ->
         Printf.bprintf out "\tsub %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
       | Imm i ->
-        Printf.bprintf out "\taddi %s, %s, -%d\n" (reg rd) (reg r1) i
+        (* 使用加法指令与取负的立即数，避免 "--5" 这类非法文本 *)
+        Printf.bprintf out "\taddi %s, %s, %d\n" (reg rd) (reg r1) (-i)
       )
     | IR_Mul (rd, r1, r2) -> Printf.bprintf out "\tmul %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
     | IR_Div (rd, r1, r2) -> Printf.bprintf out "\tdiv %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
