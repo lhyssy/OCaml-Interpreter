@@ -80,14 +80,9 @@ let fresh_label prefix =
   prefix ^ "_" ^ string_of_int l
 ;;
 
-(*let emit env instr =
-  env.instructions <- instr :: env.instructions
-;;*)
-
 let emit env instr =
-  env.instructions <- env.instructions @ [instr]
+  env.instructions <- instr :: env.instructions
 ;;
-
   
 (* 表达式求值，返回存放结果的虚拟寄存器 *)
 let rec compile_expr env expr : vreg =
@@ -493,7 +488,8 @@ let rec compile_stmt env stmt : unit =
       | EInt n -> 
           emit env (IR_Li (1, n)) (* Optimization: direct load to a0 (vreg 1) *)
       | _ -> 
-        compile_expr_vreg env e 1; (* Move result to a0 (vreg 1) *)
+        let vreg = compile_expr env e in (* 防止例如在斐波那契中的a0保存性问题 *)
+        emit env (IR_Mv (1, vreg)) (* 将结果存入 a0 (vreg 1) *)
       );
       emit env (IR_J env.current_func_return_label)
   | SReturn None ->

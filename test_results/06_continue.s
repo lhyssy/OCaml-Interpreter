@@ -5,14 +5,22 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	jal x0, main_return
-	jal x0, while_start_0
-	addi t0, t0, 1
-endif_4:
-	jal x0, endif_4
+	addi t0, x0, 0
+	addi t1, x0, 0
 while_start_0:
-	addi t0, x0, 0
-	addi t0, x0, 0
+	addi t2, x0, 5
+	bge t0, t2, while_end_2
+	addi t0, t0, 1
+	addi t2, x0, 3
+	bne t0, t2, else_3
+	jal x0, while_continue_1
+else_3:
+	addi t1, t1, 1
+while_continue_1:
+	jal x0, while_start_0
+while_end_2:
+	addi a0, t1, 0
+	jal x0, main_return
 main_return:
 	lw ra, 12(sp)
 	lw s0, 8(sp)
