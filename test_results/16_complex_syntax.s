@@ -30,16 +30,36 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	addi t0, x0, 1
-	addi s1, x0, 3
-	addi sp, sp, -4
-	sw t0, 0(sp)
-	addi a0, s1, 0
+	addi s1, x0, 0
+	addi s2, x0, 3
+	addi s3, x0, 1
+while_start_5:
+	addi s4, x0, 1
+	bge s4, s2, while_end_7
+	mul s3, s3, s2
+	addi s2, s2, -1
+	jal x0, while_start_5
+while_end_7:
+	addi s1, s3, 0
+while_start_8:
+	addi s3, x0, 100
+	bge s3, s1, while_end_10
+	addi s3, x0, 2
+	rem s3, s1, s3
+	addi s2, x0, 0
+	bne s3, s2, else_11
+	srli s1, s1, 1
+	jal x0, endif_12
+else_11:
+	addi s1, s1, -1
+endif_12:
+	jal x0, while_start_8
+while_end_10:
+	addi s3, x0, 3
+	addi a0, s3, 0
 	jal ra, factorial
-	lw t0, 0(sp)
-	addi sp, sp, 4
-	addi t1, a0, 0
-	div t0, t0, t1
+	addi t0, a0, 0
+	div t0, s1, t0
 	addi a0, t0, 0
 	jal x0, main_return
 main_return:

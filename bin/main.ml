@@ -66,11 +66,11 @@ let main () =
 
   reset_label_count ();
 
-  let optimized_ast = optimize_program ast in
+  let optimized_ast = (*optimize_program*) ast in
   if options.show_ast then
     Printf.printf "%s\n" (string_of_program optimized_ast);
 
-  let ir_code = generate_ir ast in
+  let ir_code = generate_ir optimized_ast in
   let ir_code_opt = optimize_program2 ir_code in
   if options.show_ir then
     Printf.printf "%s\n" (string_of_ir_program ir_code_opt);

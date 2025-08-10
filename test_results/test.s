@@ -34,13 +34,13 @@ main:
 	sw s0, 8(sp)
 	addi s0, sp, 16
 	addi s1, x0, 5
-	addi s2, x0, 10
 	addi a0, s1, 0
 	jal ra, sum
 	addi t0, a0, 0
+	addi s1, x0, 10
 	addi sp, sp, -4
 	sw t0, 0(sp)
-	addi a0, s2, 0
+	addi a0, s1, 0
 	jal ra, sum
 	lw t0, 0(sp)
 	addi sp, sp, 4

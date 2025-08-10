@@ -315,8 +315,7 @@ let rec compile_expr_vreg env expr dest_vreg =
       emit env (IR_T_reg_restore cur_t_id);
 
       (* 6. 获取返回值 (总是在 a0, 对应 vreg 1) *)
-      let rd = fresh_vreg env in
-      emit env (IR_Mv (rd, 1));
+      emit env (IR_Mv (dest_vreg, 1));
   | EUnop (op, e) ->
       compile_expr_vreg env e dest_vreg;
       (match op with
