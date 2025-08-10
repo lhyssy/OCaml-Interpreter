@@ -181,7 +181,29 @@ let rec compile_expr env expr : vreg =
           let r1 = compile_expr env e1 in
 
           (* 检查特殊情况与小立即数优化 *)
-          match e2 with
+          (* 左常量若存在的若干优化：Add/Mul 的交换律与特殊值 *)
+          (match e1, op with
+          | EInt 0, Add -> (* 0 + e2 = e2 *)
+              let r2 = compile_expr env e2 in r2
+          | EInt c, Add when is_12bit c ->
+              let r2 = compile_expr env e2 in
+              let rd = fresh_vreg env in
+              emit env (IR_Add (rd, r2, Imm c));
+              rd
+          | EInt 0, Mul -> (* 0 * e2 = 0 *)
+              let rd = fresh_vreg env in
+              emit env (IR_Li (rd, 0));
+              rd
+          | EInt 1, Mul -> (* 1 * e2 = e2 *)
+              let r2 = compile_expr env e2 in r2
+          | EInt n, Mul when is_power_of_two n ->
+              let r2 = compile_expr env e2 in
+              let rd = fresh_vreg env in
+              let shift = log2 n in
+              emit env (IR_Slli (rd, r2, shift));
+              rd
+          | _ ->
+          (match e2 with
           | EInt n when op = Mul && is_power_of_two n ->
               (* 乘以2的幂优化为左移 *)
               let rd = fresh_vreg env in
@@ -223,7 +245,7 @@ let rec compile_expr env expr : vreg =
                 emit env (IR_Sub (rd, r1, Imm n))
               else
                 emit env (IR_Add (rd, r1, Imm (-n)));
-              rd
+               rd
           | _ ->
               (* 标准情况 *)
               let r2 = compile_expr env e2 in
@@ -274,6 +296,8 @@ let rec compile_expr env expr : vreg =
           emit env (IR_Label label_end)
               );
               rd
+          )
+          )
 ;;
 
 (* 表达式求值，并将结果返回至虚拟寄存器*)
@@ -389,6 +413,15 @@ let rec compile_expr_vreg env expr dest_vreg =
         compile_expr_vreg env e1 dest_vreg;
         let shift = log2 n in
         emit env (IR_Srli (dest_vreg, dest_vreg, shift));
+      | Add, EInt c, _ when is_12bit c ->
+        compile_expr_vreg env e2 dest_vreg;
+        if c <> 0 then emit env (IR_Add (dest_vreg, dest_vreg, Imm c));
+      | Mul, EInt n, _ when is_power_of_two n ->
+        compile_expr_vreg env e2 dest_vreg;
+        let shift = log2 n in
+        emit env (IR_Slli (dest_vreg, dest_vreg, shift));
+      | Add, _, EInt 0 -> compile_expr_vreg env e1 dest_vreg
+      | Add, EInt 0, _ -> compile_expr_vreg env e2 dest_vreg
       | _, _, _ ->
       (* 常规情况 *)
       let r1 = compile_expr env e1 in

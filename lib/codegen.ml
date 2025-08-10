@@ -449,11 +449,11 @@ let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hasht
     | IR_Slli (rd, r1, i) -> Printf.bprintf out "\tslli %s, %s, %d\n" (reg rd) (reg r1) i
     | IR_Srli (rd, r1, i) -> Printf.bprintf out "\tsrli %s, %s, %d\n" (reg rd) (reg r1) i
     | IR_Seqz (rd, rs) ->
-        Printf.bprintf out "\tsub %s, %s, x0\n" (reg rd) (reg rs);
-        Printf.bprintf out "\tsltiu %s, %s, 1\n" (reg rd) (reg rd)
+        (* 直接使用单条 sltiu 伪指令序列 *)
+        Printf.bprintf out "\tsltiu %s, %s, 1\n" (reg rd) (reg rs)
     | IR_Snez (rd, rs) ->
-        Printf.bprintf out "\tsub %s, %s, x0\n" (reg rd) (reg rs);
-        Printf.bprintf out "\tsltu %s, x0, %s\n" (reg rd) (reg rd)
+        (* 直接使用单条 sltu 伪指令序列 *)
+        Printf.bprintf out "\tsltu %s, x0, %s\n" (reg rd) (reg rs)
     | IR_Slt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r1) (reg r2)
     | IR_Sgt (rd, r1, r2) -> Printf.bprintf out "\tslt %s, %s, %s\n" (reg rd) (reg r2) (reg r1)
     | IR_Sge (rd, r1, r2) ->

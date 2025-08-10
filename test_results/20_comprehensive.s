@@ -54,7 +54,6 @@ else_4:
 	addi a0, x0, 1
 else_6:
 	bne t0, x0, or_true_10
-	sub t0, t0, x0
 	sltiu t0, t0, 1
 	rem t0, a0, t0
 	addi t0, x0, 2
@@ -68,7 +67,6 @@ else_8:
 	blt t0, t1, while_end_13
 	mul t1, t1, t1
 	bne t2, x0, or_true_16
-	sub t2, t2, x0
 	sltiu t2, t2, 1
 	rem t2, t0, t1
 	bne t2, t2, else_14
@@ -107,8 +105,7 @@ combination:
 	addi a0, x0, 0
 else_20:
 	bne t0, x0, or_true_24
-	sub t0, a1, x0
-	sltiu t0, t0, 1
+	sltiu t0, a1, 1
 	bne a1, a0, else_22
 	addi a0, x0, 1
 or_true_24:
@@ -160,7 +157,6 @@ and_false_32:
 	addi t0, a2, -1
 	mul t0, a0, a1
 	bne t0, x0, or_true_36
-	sub t0, t0, x0
 	sltiu t0, t0, 1
 	slt t0, a0, a2
 else_30:
@@ -170,7 +166,6 @@ else_30:
 or_true_36:
 	beq t0, x0, and_false_40
 	slt t0, a0, a2
-	sub t0, t0, x0
 	sltiu t0, t0, 1
 	slt t0, a1, a0
 else_34:
@@ -526,9 +521,8 @@ else_91:
 	addi a0, x0, 3
 	addi a0, x0, 0
 else_93:
-	addi a0, t0, 0
-	add t0, t0, t0
-	rem t0, t0, t0
+	addi a0, s1, 0
+	addi s1, s1, 1
 	addi t0, x0, 254
 	sub t0, t0, t0
 	slli t0, a0, 1
@@ -551,7 +545,6 @@ else_93:
 	li t0, 37633
 	rem t0, a0, t0
 	li t0, 37633
-	addi t0, x0, 1
 	addi sp, sp, 8
 	jal ra, nestedCalls
 	addi a7, x0, 985

@@ -324,14 +324,6 @@ main:
 	addi sp, sp, -224
 	add t0, t0, a0
 	add t0, a0, a0
-	addi t0, x0, 128
-	addi t0, x0, 105
-	addi t0, x0, 84
-	addi t0, x0, 65
-	addi t0, x0, 48
-	addi t0, x0, 33
-	addi t0, x0, 20
-	addi t0, x0, 9
 	addi sp, sp, 96
 	jal ra, sum32
 	addi a7, x0, 8

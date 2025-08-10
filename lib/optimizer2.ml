@@ -19,6 +19,16 @@ let remove_adjacent_jumps (instructions : instruction list) : instruction list =
 let simplify_noop_instructions (instructions : instruction list) : instruction list =
   let rec aux acc = function
     | [] -> List.rev acc
+    (* 连续 addi/subi 合并：add rd, rs, imm1; add rd, rd, imm2 -> add rd, rs, imm1+imm2 *)
+    | IR_Add (rd1, rs1, Imm n1) :: IR_Add (rd2, rs2, Imm n2) :: rest when rd1 = rd2 && rd2 = rs2 ->
+        aux acc (IR_Add (rd1, rs1, Imm (n1 + n2)) :: rest)
+    | IR_Sub (rd1, rs1, Imm n1) :: IR_Sub (rd2, rs2, Imm n2) :: rest when rd1 = rd2 && rd2 = rs2 ->
+        aux acc (IR_Sub (rd1, rs1, Imm (n1 + n2)) :: rest)
+    (* mv + addi 融合：mv rd, rs; add rd, rd, imm -> add rd, rs, imm *)
+    | IR_Mv (rd1, rs1) :: IR_Add (rd2, rs2, Imm n) :: rest when rd1 = rd2 && rd2 = rs2 ->
+        aux acc (IR_Add (rd2, rs1, Imm n) :: rest)
+    | IR_Mv (rd1, rs1) :: IR_Sub (rd2, rs2, Imm n) :: rest when rd1 = rd2 && rd2 = rs2 ->
+        aux acc (IR_Sub (rd2, rs1, Imm n) :: rest)
     | IR_Add (rd, rs1, Imm 0) :: rest ->
         if rd = rs1 then aux acc rest else aux (IR_Mv (rd, rs1) :: acc) rest
     | IR_Sub (rd, rs1, Imm 0) :: rest ->

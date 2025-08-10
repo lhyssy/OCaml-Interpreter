@@ -79,7 +79,6 @@ else_8:
 	addi a0, x0, 1
 else_10:
 	bne t0, x0, or_true_14
-	sub t0, t0, x0
 	sltiu t0, t0, 1
 	rem t0, a0, t0
 	addi t0, x0, 2
@@ -93,7 +92,6 @@ else_12:
 	blt t0, t1, while_end_17
 	mul t1, t1, t1
 	bne t2, x0, or_true_20
-	sub t2, t2, x0
 	sltiu t2, t2, 1
 	rem t2, t0, t1
 	bne t2, t2, else_18
@@ -181,8 +179,7 @@ else_49:
 	add t0, t0, t0
 	add t0, t0, t0
 	addi t0, t0, 87
-	add t0, t0, t0
-	addi t0, x0, -2
+	addi t0, t0, -2
 while_end_48:
 main_return:
 	lw ra, 12(sp)
