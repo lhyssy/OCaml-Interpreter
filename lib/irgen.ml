@@ -136,7 +136,7 @@ let rec compile_expr env expr : vreg =
 
       (* 6. 获取返回值 (总是在 a0, 对应 vreg 1) *)
       emit env (IR_Mv (rd, 1));
-  
+
       rd
   | EUnop (op, e) ->
       let rs = compile_expr env e in
@@ -178,9 +178,9 @@ let rec compile_expr env expr : vreg =
           rd
       | _, _ ->
           (* 不是常量表达式 *)
-      let r1 = compile_expr env e1 in
-          
-          (* 检查特殊情况 *)
+          let r1 = compile_expr env e1 in
+
+          (* 检查特殊情况与小立即数优化 *)
           match e2 with
           | EInt n when op = Mul && is_power_of_two n ->
               (* 乘以2的幂优化为左移 *)
@@ -211,11 +211,24 @@ let rec compile_expr env expr : vreg =
           | EInt 1 when op = Div ->
               (* x / 1 = x *)
               r1
+          | EInt n when op = Add && is_12bit n ->
+              if n = 0 then r1 else
+              let rd = fresh_vreg env in
+              emit env (IR_Add (rd, r1, Imm n));
+              rd
+          | EInt n when op = Sub && is_12bit (-n) ->
+              if n = 0 then r1 else
+              let rd = fresh_vreg env in
+              if n >= 0 then
+                emit env (IR_Sub (rd, r1, Imm n))
+              else
+                emit env (IR_Add (rd, r1, Imm (-n)));
+              rd
           | _ ->
               (* 标准情况 *)
-      let r2 = compile_expr env e2 in
-      let rd = fresh_vreg env in
-      (match op with
+              let r2 = compile_expr env e2 in
+              let rd = fresh_vreg env in
+              (match op with
       | Add -> emit env (IR_Add (rd, r1, VReg r2))
       | Sub -> emit env (IR_Sub (rd, r1, VReg r2))
       | Mul -> emit env (IR_Mul (rd, r1, r2))
@@ -259,8 +272,8 @@ let rec compile_expr env expr : vreg =
           emit env (IR_Label label_true);
           emit env (IR_Li (rd, 1));
           emit env (IR_Label label_end)
-      );
-      rd
+              );
+              rd
 ;;
 
 (* 表达式求值，并将结果返回至虚拟寄存器*)
@@ -315,8 +328,7 @@ let rec compile_expr_vreg env expr dest_vreg =
       emit env (IR_T_reg_restore cur_t_id);
 
       (* 6. 获取返回值 (总是在 a0, 对应 vreg 1) *)
-      let rd = fresh_vreg env in
-      emit env (IR_Mv (rd, 1));
+      emit env (IR_Mv (dest_vreg, 1));
   | EUnop (op, e) ->
       compile_expr_vreg env e dest_vreg;
       (match op with

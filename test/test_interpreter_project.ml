@@ -29,6 +29,15 @@ let filenames = [
   "test";
 ]
 
+let rec find_project_root start_dir =
+  let marker = Filename.concat start_dir "dune-project" in
+  if Sys.file_exists marker then start_dir
+  else
+    let parent = Filename.dirname start_dir in
+    if parent = start_dir then start_dir (* fallback: root of FS *)
+    else find_project_root parent
+;;
+
 let parse_input in_channel filename =
   let lexbuf = Lexing.from_channel in_channel in
   Lexing.set_filename lexbuf filename;
@@ -49,12 +58,12 @@ let parse_input in_channel filename =
 
 let test_file filename =
   let in_filepath = 
-  let project_root = Sys.getenv "PWD" in  (* 获取项目根目录 *)
-  Filename.concat project_root ("test/" ^ filename ^ ".tc") in
+  let project_root = find_project_root (Sys.getcwd ()) in
+  Filename.concat project_root (Filename.concat "test" (filename ^ ".tc")) in
 
   let out_filepath =
-  let build_dir = Sys.getenv "PWD" in  (* 构建目录 *)
-  Filename.concat build_dir ("test_results/" ^ filename ^ ".s") in
+  let project_root = find_project_root (Sys.getcwd ()) in
+  Filename.concat project_root (Filename.concat "test_results" (filename ^ ".s")) in
 
   reset_label_count ();
 
