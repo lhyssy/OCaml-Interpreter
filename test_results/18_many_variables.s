@@ -6,11 +6,9 @@ abs:
 	addi s0, sp, 16
 	bge a0, t0, else_0
 	addi t0, x0, 0
-	jal x0, abs_return
 	addi a0, t0, 0
 	sub t0, t0, a0
 	addi t0, x0, 0
-	jal x0, abs_return
 else_0:
 abs_return:
 	lw s0, 12(sp)
@@ -21,7 +19,6 @@ echo:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	jal x0, echo_return
 echo_return:
 	lw s0, 12(sp)
 	addi sp, sp, 16
@@ -33,7 +30,6 @@ compute:
 	sw s0, 8(sp)
 	sw s1, 4(sp)
 	addi s0, sp, 16
-	jal x0, compute_return
 	addi a0, t0, 0
 	add t0, s1, t0
 	mul t0, t0, a7
@@ -60,7 +56,6 @@ main:
 	sw ra, 156(sp)
 	sw s0, 152(sp)
 	addi s0, sp, 160
-	jal x0, main_return
 	jal ra, compute
 	addi a7, t0, 0
 	addi a6, t1, 0

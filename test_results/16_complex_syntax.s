@@ -6,14 +6,10 @@ factorial:
 	addi s0, sp, 16
 	blt t0, a0, else_0
 	addi t0, x0, 0
-	jal x0, factorial_return
 	addi a0, x0, 1
 else_0:
 	bge t0, t0, while_end_4
 	addi t0, x0, 1
-while_start_2:
-	jal x0, while_start_2
-	jal x0, factorial_return
 	addi a0, t0, 0
 while_end_4:
 factorial_return:
@@ -26,7 +22,6 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	jal x0, main_return
 	addi a0, t0, 0
 	div t0, s1, a0
 	jal ra, factorial

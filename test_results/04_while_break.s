@@ -7,13 +7,9 @@ main:
 	addi s0, sp, 16
 	bge t0, t1, while_end_2
 	addi t1, x0, 10
-while_start_0:
 	bne t0, t1, else_3
 	addi t1, x0, 5
-	jal x0, while_end_2
 else_3:
-	jal x0, while_start_0
-	jal x0, main_return
 	addi a0, t0, 0
 while_end_2:
 main_return:

@@ -109,12 +109,14 @@ let uses_defs_of_instr (instr: instruction) : (vreg list * vreg list) =
   | IR_Beq (r1, r2, _) | IR_Bne (r1, r2, _) | IR_Blt (r1, r2, _) | IR_Bge (r1, r2, _) -> ([r1; r2], [])
   | IR_Load_Callee_Stack_Arg (d, _) -> ([], [d])
   | IR_Call _ -> ([], [1])
-  | IR_Ret | IR_Label _ | IR_Comment _ | IR_Adjust_SP _ | IR_Push_Caller_Stack_Arg _
-  | IR_J _ | IR_T_reg_save _ | IR_T_reg_restore _ -> ([], [])
+  | IR_J _ -> ([1], [])
+  | IR_Ret -> ([1], [])
+  | IR_Label _ | IR_Comment _ | IR_Adjust_SP _ | IR_Push_Caller_Stack_Arg _
+  | IR_T_reg_save _ | IR_T_reg_restore _ -> ([], [])
 ;;
 
 let has_side_effect = function
-  | IR_Sw _ | IR_Call _ | IR_Adjust_SP _ | IR_Push_Caller_Stack_Arg _ | IR_J _ | IR_Ret
+  | IR_Sw _ | IR_Call _ | IR_Adjust_SP _ | IR_Push_Caller_Stack_Arg _
   | IR_Beq _ | IR_Bne _ | IR_Blt _ | IR_Bge _ | IR_Beqz _ | IR_Bnez _ | IR_T_reg_save _ | IR_T_reg_restore _
   | IR_Label _ -> true
   | _ -> false

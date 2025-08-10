@@ -7,9 +7,7 @@ fact:
 	addi s0, sp, 16
 	blt t0, a0, else_0
 	addi t0, x0, 1
-	jal x0, fact_return
 	addi a0, x0, 1
-	jal x0, fact_return
 	addi a0, t0, 0
 	mul t0, a0, a0
 	jal ra, fact
@@ -27,7 +25,6 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	jal x0, main_return
 	jal ra, fact
 	addi a0, x0, 5
 main_return:

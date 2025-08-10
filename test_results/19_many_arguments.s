@@ -4,7 +4,6 @@ sum8:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	jal x0, sum8_return
 	addi a0, t0, 0
 	add t0, t0, a7
 	add t0, t0, a6
@@ -22,7 +21,6 @@ sum16:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	jal x0, sum16_return
 	addi a0, t0, 0
 	add t0, t0, t0
 	add t0, t0, t0
@@ -56,7 +54,6 @@ sum32:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	jal x0, sum32_return
 	addi a0, t0, 0
 	add t0, t0, t0
 	add t0, t0, t0
@@ -122,7 +119,6 @@ sum64:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	jal x0, sum64_return
 	addi a0, t0, 0
 	add t0, t0, t0
 	add t0, t0, t0
@@ -253,7 +249,6 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	jal x0, main_return
 	addi a0, t0, 0
 	rem t0, t0, t0
 	addi t0, x0, 256
