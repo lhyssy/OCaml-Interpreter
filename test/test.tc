@@ -1,9 +1,36 @@
-int subs(int x, int y){
-    return x - y;
+int sum(int n) {
+    int total = 0;
+    int i = 0;
+    while (i < n) {
+        if (i % 2 == 0) {
+            total = total + i;
+        } else {
+            total = total - i;
+        }
+        i = i + 1;
+    }
+    return total;
 }
 
-// 12345
-
 int main() {
-    return subs(114, 514);
+    int x = 5;
+    int y = 10;
+    int z = sum(x) + sum(y);
+    if (z > 0) {
+        z = z * 2;
+    } else {
+        z = -z;
+    }
+    int res = 0;
+    int j = 0;
+    while (j < z) {
+        if (j % 3 == 0) {
+            res = res + j;
+        }
+        if (j == 15) {
+            break;
+        }
+        j = j + 1;
+    }
+    return res;
 }
