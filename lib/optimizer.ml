@@ -131,8 +131,8 @@ let rec simplify_expr stack_env expr =
       尝试排查了部分env，但是还是找不到错误在哪里 *)
     (* EVar name *)
     (match VMap.find_opt name stack_env.current with
-    | Some v -> EInt v
-    | None -> EVar name
+      | Some v -> EInt v
+      | None -> EVar name
     )
   | EUnop (op, e) ->
       let se = simplify_expr stack_env e in
@@ -268,7 +268,7 @@ let rec optimize_stmt (stmt, const_env) =
             | None -> (SEmpty, const_env)
           )
         | _ ->
-           let rconst_env = remove_const const_env stmt in
+           let const_env = remove_const const_env stmt in
            let (st, _) = optimize_stmt (then_s, enter_stack const_env) in
            let (se_opt, _) = 
             match else_opt with
@@ -276,20 +276,20 @@ let rec optimize_stmt (stmt, const_env) =
               optimize_stmt (s, enter_stack const_env) in (Some os, oe)
               | None -> (None, enter_stack const_env)
            in
-           (SIf (sc, st, se_opt), exit_stack rconst_env)
+           (SIf (sc, st, se_opt), const_env)
       )
   | SWhile (cond, body) ->
       let try_cond = simplify_expr const_env cond in(
       match try_cond with
       | EInt 0 -> (SEmpty, const_env) (* 如果条件为0，直接删除循环 *)
       | _ ->
-        let rconst_env = remove_const const_env stmt in
+        let const_env = remove_const const_env stmt in
         let sc = simplify_expr const_env cond in
         let (new_body, _) = optimize_stmt (body, enter_stack const_env) in
-        (SWhile (sc, new_body), exit_stack rconst_env)
+        (SWhile (sc, new_body), const_env)
       )
   | SBlock stmts ->
-      let (new_stmts, _) =
+      let (new_stmts, new_env) =
         List.fold_left
           (fun (acc_stmts, current_env) s ->
             let (os, next_env) = optimize_stmt (s, current_env) in
@@ -306,7 +306,7 @@ let rec optimize_stmt (stmt, const_env) =
                        | [single] -> single
                        | _ -> SBlock new_stmts_rev
       in
-      (final_stmt, const_env)
+      (final_stmt, exit_stack new_env)
   | SBreak | SContinue as s -> (s, const_env)
 ;;
 
