@@ -504,13 +504,22 @@ let rec compile_stmt env stmt : unit =
   | SIf (cond, then_s, else_opt) ->
       let else_label = fresh_label "else" in
       let end_label = fresh_label "endif" in
+
       compile_cond env cond else_label;
+      env.var_env <- in_var env.var_env;
       compile_stmt env then_s;
+      env.var_env <- out_var env.var_env;
+
       emit env (IR_J end_label);
       emit env (IR_Label else_label);
+
       (match else_opt with
-      | Some s -> compile_stmt env s
+      | Some s -> 
+        env.var_env <- in_var env.var_env;
+        compile_stmt env s;
+        env.var_env <- out_var env.var_env;
       | None -> ());
+      
       emit env (IR_Label end_label)
   | SWhile (cond, body) ->
     let start_label = fresh_label  "while_start" in
@@ -522,7 +531,9 @@ let rec compile_stmt env stmt : unit =
 
     emit env (IR_Label start_label);
     compile_cond env cond end_label;
+    env.var_env <- in_var env.var_env;
     compile_stmt env body;
+    env.var_env <- out_var env.var_env;
 
     emit env (IR_Label continue_label); (* continue 跳转点 *)
     emit env (IR_J start_label);

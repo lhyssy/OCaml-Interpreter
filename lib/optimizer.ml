@@ -54,6 +54,16 @@ let rec remove_var_through stack name =
   { current = new_cur; parent = new_parent }
 ;;
 
+let enter_stack stack =
+  { current = VMap.empty; parent = Some stack } (* 进入新作用域，当前作用域为空 *)
+;;
+
+let exit_stack stack =
+  match stack.parent with
+  | Some parent -> parent (* 返回到父级作用域 *)
+  | None -> new_env_stack () (* 如果没有父级，则返回一个新的空栈 *)
+;;
+
 let rec remove_const stack stmt = 
   match stmt with
   | SAssign (name, _) ->
@@ -117,13 +127,13 @@ let rec simplify_expr stack_env expr =
   match expr with
   | EInt _ as c -> c
   | EVar name -> 
-    EVar name
     (* 不知道为什么如果真的执行此优化，那么性能测试P1将会不通过 
       尝试排查了部分env，但是还是找不到错误在哪里 *)
-    (*match lookup_var stack_env name with
+    (* EVar name *)
+    (match lookup_var stack_env name with
       | Some v -> EInt v (* 如果变量在栈中找到，返回其值 *)
       | None -> EVar name (* 否则保持变量名不变, 可能是未定义的变量 *)
-    *)
+    )
   | EUnop (op, e) ->
       let se = simplify_expr stack_env e in
       (match op, se with
@@ -248,20 +258,26 @@ let rec optimize_stmt (stmt, const_env) =
       let sc = simplify_expr const_env cond in(
       match sc with
         | EInt n when n <> 0 ->
-          optimize_stmt (then_s, const_env)
+          let stmt, stack = optimize_stmt (then_s, enter_stack const_env) in
+          (stmt, exit_stack stack)
         | EInt n when n = 0 ->(
           match else_opt with 
-            | Some s -> optimize_stmt (s, const_env) 
+            | Some s -> 
+              let stmt, stack = optimize_stmt (s, enter_stack const_env) in
+              (stmt, exit_stack stack)
             | None -> (SEmpty, const_env)
           )
         | _ ->
            let const_env = remove_const const_env stmt in
-           let (st, _) = optimize_stmt (then_s, const_env) in
-           let (se_opt, _) = match else_opt with
-                             | Some s -> let (os, oe) = optimize_stmt (s, const_env) in (Some os, oe)
-                             | None -> (None, const_env)
+           let (st, res_stack1) = optimize_stmt (then_s, enter_stack const_env) in
+           let cleared_stack = exit_stack res_stack1 in
+           let (se_opt, res_stack2) = 
+            match else_opt with
+              | Some s -> let (os, oe) = 
+              optimize_stmt (s, enter_stack cleared_stack) in (Some os, oe)
+              | None -> (None, enter_stack cleared_stack)
            in
-           (SIf (sc, st, se_opt), const_env)
+           (SIf (sc, st, se_opt), exit_stack res_stack2)
       )
   | SWhile (cond, body) ->
       let try_cond = simplify_expr const_env cond in(
@@ -270,14 +286,10 @@ let rec optimize_stmt (stmt, const_env) =
       | _ ->
         let const_env = remove_const const_env stmt in
         let sc = simplify_expr const_env cond in
-        let (new_body, _) = optimize_stmt (body, const_env) in
-        (SWhile (sc, new_body), const_env)
+        let (new_body, res_stack) = optimize_stmt (body, enter_stack const_env) in
+        (SWhile (sc, new_body), exit_stack res_stack)
       )
   | SBlock stmts ->
-      let child_env = { 
-        current = VMap.empty; 
-        parent = Some const_env;
-      } in
       let (new_stmts, new_env) =
         List.fold_left
           (fun (acc_stmts, current_env) s ->
@@ -287,12 +299,7 @@ let rec optimize_stmt (stmt, const_env) =
             | SReturn _ -> (os :: acc_stmts, next_env) (* Stop processing after return *)
             | _ -> (os :: acc_stmts, next_env)
           )
-          ([], child_env) stmts
-      in
-      let final_env = 
-        match new_env.parent with
-        | Some parent_env -> parent_env (* Return to parent scope after block *)
-        | None -> new_env_stack () (* If no parent, create an empty stack *)
+          ([], enter_stack const_env) stmts
       in
       let new_stmts_rev = List.rev new_stmts in
       let final_stmt = match new_stmts_rev with
@@ -300,7 +307,7 @@ let rec optimize_stmt (stmt, const_env) =
                        | [single] -> single
                        | _ -> SBlock new_stmts_rev
       in
-      (final_stmt, final_env)
+      (final_stmt, exit_stack new_env)
   | SBreak | SContinue as s -> (s, const_env)
 ;;
 
