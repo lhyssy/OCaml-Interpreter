@@ -130,9 +130,9 @@ let rec simplify_expr stack_env expr =
     (* 不知道为什么如果真的执行此优化，那么性能测试P1将会不通过 
       尝试排查了部分env，但是还是找不到错误在哪里 *)
     (* EVar name *)
-    (match lookup_var stack_env name with
-      | Some v -> EInt v (* 如果变量在栈中找到，返回其值 *)
-      | None -> EVar name (* 否则保持变量名不变, 可能是未定义的变量 *)
+    (match VMap.find_opt name stack_env.current with
+    | Some v -> EInt v
+    | None -> EVar name
     )
   | EUnop (op, e) ->
       let se = simplify_expr stack_env e in
@@ -268,29 +268,28 @@ let rec optimize_stmt (stmt, const_env) =
             | None -> (SEmpty, const_env)
           )
         | _ ->
-           let const_env = remove_const const_env stmt in
-           let (st, res_stack1) = optimize_stmt (then_s, enter_stack const_env) in
-           let cleared_stack = exit_stack res_stack1 in
-           let (se_opt, res_stack2) = 
+           let rconst_env = remove_const const_env stmt in
+           let (st, _) = optimize_stmt (then_s, enter_stack const_env) in
+           let (se_opt, _) = 
             match else_opt with
               | Some s -> let (os, oe) = 
-              optimize_stmt (s, enter_stack cleared_stack) in (Some os, oe)
-              | None -> (None, enter_stack cleared_stack)
+              optimize_stmt (s, enter_stack const_env) in (Some os, oe)
+              | None -> (None, enter_stack const_env)
            in
-           (SIf (sc, st, se_opt), exit_stack res_stack2)
+           (SIf (sc, st, se_opt), exit_stack rconst_env)
       )
   | SWhile (cond, body) ->
       let try_cond = simplify_expr const_env cond in(
       match try_cond with
       | EInt 0 -> (SEmpty, const_env) (* 如果条件为0，直接删除循环 *)
       | _ ->
-        let const_env = remove_const const_env stmt in
+        let rconst_env = remove_const const_env stmt in
         let sc = simplify_expr const_env cond in
-        let (new_body, res_stack) = optimize_stmt (body, enter_stack const_env) in
-        (SWhile (sc, new_body), exit_stack res_stack)
+        let (new_body, _) = optimize_stmt (body, enter_stack const_env) in
+        (SWhile (sc, new_body), exit_stack rconst_env)
       )
   | SBlock stmts ->
-      let (new_stmts, new_env) =
+      let (new_stmts, _) =
         List.fold_left
           (fun (acc_stmts, current_env) s ->
             let (os, next_env) = optimize_stmt (s, current_env) in
@@ -307,7 +306,7 @@ let rec optimize_stmt (stmt, const_env) =
                        | [single] -> single
                        | _ -> SBlock new_stmts_rev
       in
-      (final_stmt, exit_stack new_env)
+      (final_stmt, const_env)
   | SBreak | SContinue as s -> (s, const_env)
 ;;
 

@@ -343,10 +343,6 @@ let check_s_regs_usage (instrs : instruction list) (vreg_map : (vreg, preg optio
     failwith "vreg_map does not contain all vregs used in instructions";
 ;;
 
-(* TODO：书写函数，收集每一对save/restore所需要保存的t寄存器 *)
-(* 注：需要保存的t寄存器对应的虚拟寄存器，其活期应该横穿整个调用过程 *)
-(* 即start行号小于等于save行号，restore行号小于等于load行号 *)
-
 (* 计算每一个treg_save和treg_load的行号 *)
 let compute_treg_save_intervals (instrs : instruction list) : live_intervals =
   let intervals = ref VRegMap.empty in
@@ -403,8 +399,6 @@ let get_treg_save_restore treg_intervals vreg_map live_intervals: (vreg, preg li
   ) treg_intervals;
   tbl
 ;;
-
-(* TODO：将调用函数前后保存T寄存器的部分交由IR_T_reg_save/restore管理 *)
 
 (* IR to Assembly *)
 let code_of_ir (instrs : instruction list) (vreg_map : (vreg, preg option) Hashtbl.t) treg_map =
