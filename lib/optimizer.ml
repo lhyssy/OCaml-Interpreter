@@ -127,12 +127,13 @@ let rec simplify_expr stack_env expr =
   match expr with
   | EInt _ as c -> c
   | EVar name -> 
-    (* 不知道为什么如果真的执行此优化，那么性能测试P1将会不通过 
-      尝试排查了部分env，但是还是找不到错误在哪里 *)
-    (* EVar name *)
+    (* 
+    不知道为什么如果真的执行此优化，那么性能测试P1将会不通过 
+    尝试排查了部分env，但是还是找不到错误在哪里 
+    又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
+    *)
     (match VMap.find_opt name stack_env.current with
-      | Some v -> EInt v
-      | None -> EVar name
+      _ -> EVar name
     )
   | EUnop (op, e) ->
       let se = simplify_expr stack_env e in
