@@ -80,7 +80,6 @@ let print_stack stack =
       | Some p -> cur_str ^ " | " ^ string_of_stack p
       | None -> cur_str
   in
-
   Printf.printf "Current scope: %s\n" (string_of_stack stack);
 ;;
 
@@ -115,12 +114,11 @@ let expr_has_side_effects e =
 let rec simplify_expr stack_env expr =
   match expr with
   | EInt _ as c -> c
-  | EVar name ->
-    (
-      match lookup_var stack_env name with
+  | EVar name -> EVar name (* 现在假设所有的变量名保持不变 *)
+    (*match lookup_var stack_env name with
       | Some v -> EInt v (* 如果变量在栈中找到，返回其值 *)
       | None -> EVar name (* 否则保持变量名不变, 可能是未定义的变量 *)
-    )
+    *)
   | EUnop (op, e) ->
       let se = simplify_expr stack_env e in
       (match op, se with
@@ -296,6 +294,7 @@ let rec optimize_stmt (stmt, const_env) =
       in
       (final_stmt, final_env)
   | SBreak | SContinue as s -> (s, const_env)
+;;
 
 (* --- Dead Code Elimination --- *)
 

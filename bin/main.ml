@@ -66,7 +66,7 @@ let main () =
 
   reset_label_count ();
 
-  let optimized_ast = (*optimize_program*) ast in
+  let optimized_ast = optimize_program ast in
   if options.show_ast then
     Printf.printf "%s\n" (string_of_program optimized_ast);
 
