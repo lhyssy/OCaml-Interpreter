@@ -499,7 +499,8 @@ let rec compile_stmt env stmt : unit =
       env.var_env <- add_var env.var_env name init_vreg;
   | SAssign (name, expr) ->
       let dest_vreg = find_var env.var_env name in
-      compile_expr_vreg env expr dest_vreg;
+      let val_vreg = compile_expr env expr in
+      emit env (IR_Mv (dest_vreg, val_vreg));
   | SIf (cond, then_s, else_opt) ->
       let else_label = fresh_label "else" in
       let end_label = fresh_label "endif" in
