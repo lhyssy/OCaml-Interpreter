@@ -58,6 +58,8 @@ let rec remove_const stack stmt =
   match stmt with
   | SAssign (name, _) ->
       remove_var_through stack name
+  | SDeclare (name, _) ->
+      remove_var_through stack name
   | SBlock stmts ->
       List.fold_left remove_const stack stmts
   | SIf (_, then_s, else_s_opt) ->
@@ -114,11 +116,11 @@ let expr_has_side_effects e =
 let rec simplify_expr stack_env expr =
   match expr with
   | EInt _ as c -> c
-  | EVar name -> EVar name (* 现在假设所有的变量名保持不变 *)
-    (*match lookup_var stack_env name with
+  | EVar name -> 
+    (match lookup_var stack_env name with
       | Some v -> EInt v (* 如果变量在栈中找到，返回其值 *)
       | None -> EVar name (* 否则保持变量名不变, 可能是未定义的变量 *)
-    *)
+    )
   | EUnop (op, e) ->
       let se = simplify_expr stack_env e in
       (match op, se with
@@ -240,21 +242,24 @@ let rec optimize_stmt (stmt, const_env) =
     in
     (SAssign (name, se), new_stack)
   | SIf (cond, then_s, else_opt) ->
-      let sc = simplify_expr const_env cond in
-      (match sc with
-       | EInt n ->
-           if n <> 0 then optimize_stmt (then_s, const_env)
-           else (match else_opt with 
-           Some s -> optimize_stmt (s, const_env) 
-           | None -> (SEmpty, const_env))
-       | _ ->
+      let sc = simplify_expr const_env cond in(
+      match sc with
+        | EInt n when n <> 0 ->
+          optimize_stmt (then_s, const_env)
+        | EInt n when n = 0 ->(
+          match else_opt with 
+            | Some s -> optimize_stmt (s, const_env) 
+            | None -> (SEmpty, const_env)
+          )
+        | _ ->
            let const_env = remove_const const_env stmt in
            let (st, _) = optimize_stmt (then_s, const_env) in
            let (se_opt, _) = match else_opt with
                              | Some s -> let (os, oe) = optimize_stmt (s, const_env) in (Some os, oe)
                              | None -> (None, const_env)
            in
-           (SIf (sc, st, se_opt), const_env))
+           (SIf (sc, st, se_opt), const_env)
+      )
   | SWhile (cond, body) ->
       let try_cond = simplify_expr const_env cond in(
       match try_cond with

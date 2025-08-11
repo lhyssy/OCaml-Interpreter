@@ -1,36 +1,22 @@
-int sum(int n) {
-    int total = 0;
-    int i = 0;
-    while (i < n) {
-        if (i % 2 == 0) {
-            total = total + i;
-        } else {
-            total = total - i;
+int main(){
+    // test the folding
+    int x = 1;
+    int y = 2;
+    int z = 3;
+    {
+        x = 1;
+        {
+            z = 3;
+            {
+                {
+                    x = 5;
+                    z = z + x;
+                }
+            }
+            y = y - z;
         }
-        i = i + 1;
+        y = y + x;
     }
-    return total;
-}
 
-int main() {
-    int x = 5;
-    int y = 10;
-    int z = sum(x) + sum(y);
-    if (z > 0) {
-        z = z * 2;
-    } else {
-        z = -z;
-    }
-    int res = 0;
-    int j = 0;
-    while (j < z) {
-        if (j % 3 == 0) {
-            res = res + j;
-        }
-        if (j == 15) {
-            break;
-        }
-        j = j + 1;
-    }
-    return res;
+    return x + y + z;
 }
