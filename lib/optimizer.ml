@@ -117,10 +117,13 @@ let rec simplify_expr stack_env expr =
   match expr with
   | EInt _ as c -> c
   | EVar name -> 
-    (match lookup_var stack_env name with
+    EVar name
+    (* 不知道为什么如果真的执行此优化，那么性能测试P1将会不通过 
+      尝试排查了部分env，但是还是找不到错误在哪里 *)
+    (*match lookup_var stack_env name with
       | Some v -> EInt v (* 如果变量在栈中找到，返回其值 *)
       | None -> EVar name (* 否则保持变量名不变, 可能是未定义的变量 *)
-    )
+    *)
   | EUnop (op, e) ->
       let se = simplify_expr stack_env e in
       (match op, se with
@@ -258,7 +261,7 @@ let rec optimize_stmt (stmt, const_env) =
                              | Some s -> let (os, oe) = optimize_stmt (s, const_env) in (Some os, oe)
                              | None -> (None, const_env)
            in
-           (SIf (sc, st, se_opt), new_env_stack())
+           (SIf (sc, st, se_opt), const_env)
       )
   | SWhile (cond, body) ->
       let try_cond = simplify_expr const_env cond in(
@@ -268,14 +271,14 @@ let rec optimize_stmt (stmt, const_env) =
         let const_env = remove_const const_env stmt in
         let sc = simplify_expr const_env cond in
         let (new_body, _) = optimize_stmt (body, const_env) in
-        (SWhile (sc, new_body), new_env_stack())
+        (SWhile (sc, new_body), const_env)
       )
   | SBlock stmts ->
       let child_env = { 
         current = VMap.empty; 
         parent = Some const_env;
       } in
-      let (new_stmts, _) =
+      let (new_stmts, new_env) =
         List.fold_left
           (fun (acc_stmts, current_env) s ->
             let (os, next_env) = optimize_stmt (s, current_env) in
@@ -286,19 +289,18 @@ let rec optimize_stmt (stmt, const_env) =
           )
           ([], child_env) stmts
       in
-      (*
       let final_env = 
         match new_env.parent with
         | Some parent_env -> parent_env (* Return to parent scope after block *)
         | None -> new_env_stack () (* If no parent, create an empty stack *)
-      in*)
+      in
       let new_stmts_rev = List.rev new_stmts in
       let final_stmt = match new_stmts_rev with
                        | [] -> SEmpty
                        | [single] -> single
                        | _ -> SBlock new_stmts_rev
       in
-      (final_stmt, new_env_stack ())
+      (final_stmt, final_env)
   | SBreak | SContinue as s -> (s, const_env)
 ;;
 
