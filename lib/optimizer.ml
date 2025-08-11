@@ -275,7 +275,7 @@ let rec optimize_stmt (stmt, const_env) =
         current = VMap.empty; 
         parent = Some const_env;
       } in
-      let (new_stmts, new_env) =
+      let (new_stmts, _) =
         List.fold_left
           (fun (acc_stmts, current_env) s ->
             let (os, next_env) = optimize_stmt (s, current_env) in
@@ -286,18 +286,19 @@ let rec optimize_stmt (stmt, const_env) =
           )
           ([], child_env) stmts
       in
+      (*
       let final_env = 
         match new_env.parent with
         | Some parent_env -> parent_env (* Return to parent scope after block *)
         | None -> new_env_stack () (* If no parent, create an empty stack *)
-      in
+      in*)
       let new_stmts_rev = List.rev new_stmts in
       let final_stmt = match new_stmts_rev with
                        | [] -> SEmpty
                        | [single] -> single
                        | _ -> SBlock new_stmts_rev
       in
-      (final_stmt, final_env)
+      (final_stmt, new_env_stack ())
   | SBreak | SContinue as s -> (s, const_env)
 ;;
 
