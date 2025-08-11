@@ -258,7 +258,7 @@ let rec optimize_stmt (stmt, const_env) =
                              | Some s -> let (os, oe) = optimize_stmt (s, const_env) in (Some os, oe)
                              | None -> (None, const_env)
            in
-           (SIf (sc, st, se_opt), const_env)
+           (SIf (sc, st, se_opt), new_env_stack())
       )
   | SWhile (cond, body) ->
       let try_cond = simplify_expr const_env cond in(
@@ -268,7 +268,7 @@ let rec optimize_stmt (stmt, const_env) =
         let const_env = remove_const const_env stmt in
         let sc = simplify_expr const_env cond in
         let (new_body, _) = optimize_stmt (body, const_env) in
-        (SWhile (sc, new_body), const_env)
+        (SWhile (sc, new_body), new_env_stack())
       )
   | SBlock stmts ->
       let child_env = { 
