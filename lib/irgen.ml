@@ -320,9 +320,7 @@ let rec compile_expr_vreg env expr dest_vreg =
       compile_expr_vreg env e dest_vreg;
       (match op with
       | Neg ->
-          let zero_vreg = fresh_vreg env in
-          emit env (IR_Li (zero_vreg, 0));
-          emit env (IR_Sub (dest_vreg, zero_vreg, VReg(dest_vreg)));
+          emit env (IR_Sub (dest_vreg, 0, VReg(dest_vreg)));
       | Not ->
           emit env (IR_Seqz (dest_vreg, dest_vreg));
       | Plus -> ()
@@ -435,40 +433,61 @@ let rec compile_cond env cond false_label: unit =
     let cond_vreg = compile_expr env e in
     emit env (IR_Bnez (cond_vreg, false_label));
   | EBinop(binop, e1, e2) -> (
-    match binop with
-    | Eq -> 
+    match binop, e1, e2 with
+    (* 带0部分的优化 *)
+    | Eq, e, EInt 0 | Eq, EInt 0, e ->
+      let r = compile_expr env e in
+      emit env (IR_Bnez (r, false_label));
+    | Neq, e, EInt 0 | Neq, EInt 0, e ->
+      let r = compile_expr env e in
+      emit env (IR_Beqz (r, false_label));
+    | Lt, e, EInt 0 | Gt, EInt 0, e ->
+      let r = compile_expr env e in
+      emit env (IR_Bge (r, 0, false_label));
+    | Le, e, EInt 0 | Ge, EInt 0, e ->
+      let r = compile_expr env e in
+      emit env (IR_Blt (0, r, false_label));
+    | Gt, e, EInt 0 | Lt, EInt 0, e ->
+      let r = compile_expr env e in
+      emit env (IR_Bge (0, r, false_label));
+    | Ge, e, EInt 0 | Le, EInt 0, e ->
+      let r = compile_expr env e in
+      emit env (IR_Blt (r, 0, false_label));
+    (* 不带0部分的优化 *)
+    | Eq, e1, e2 -> 
       let r1 = compile_expr env e1 in
       let r2 = compile_expr env e2 in
       emit env (IR_Bne (r1, r2, false_label));
-    | Neq -> 
+    | Neq, e1, e2 -> 
       let r1 = compile_expr env e1 in
       let r2 = compile_expr env e2 in
       emit env (IR_Beq (r1, r2, false_label));
-    | Lt -> 
+    | Lt, e1, e2 -> 
       let r1 = compile_expr env e1 in
       let r2 = compile_expr env e2 in
       emit env (IR_Bge (r1, r2, false_label));
-    | Le -> 
+    | Le, e1, e2 -> 
       let r1 = compile_expr env e1 in
       let r2 = compile_expr env e2 in
       emit env (IR_Blt (r2, r1, false_label));
-    | Gt -> 
+    | Gt, e1, e2 -> 
       let r1 = compile_expr env e1 in
       let r2 = compile_expr env e2 in
       emit env (IR_Bge (r2, r1, false_label));
-    | Ge -> 
+    | Ge, e1, e2 -> 
       let r1 = compile_expr env e1 in
       let r2 = compile_expr env e2 in
       emit env (IR_Blt (r1, r2, false_label));
-    | And -> 
+    | And, e1, e2 -> 
       compile_cond env e1 false_label;
       compile_cond env e2 false_label;
-    | Or -> 
+    | Or, e1, e2 -> 
       let next_label = fresh_label "or_true" in
       let cond_vreg1 = compile_expr env e1 in
       emit env (IR_Bnez (cond_vreg1, next_label));
       compile_cond env e2 false_label;
       emit env (IR_Label next_label);
+    (* 其他正常情况 *)
     | _ -> 
       let cond_vreg = compile_expr env cond in
       emit env (IR_Beqz (cond_vreg, false_label));
@@ -499,8 +518,9 @@ let rec compile_stmt env stmt : unit =
       env.var_env <- add_var env.var_env name init_vreg;
   | SAssign (name, expr) ->
       let dest_vreg = find_var env.var_env name in
-      let val_vreg = compile_expr env expr in
-      emit env (IR_Mv (dest_vreg, val_vreg));
+      compile_expr_vreg env expr dest_vreg; (* 激进expr计算法 *)
+      (*let val_vreg = compile_expr env expr in
+      emit env (IR_Mv (dest_vreg, val_vreg));*)
   | SIf (cond, then_s, else_opt) ->
       let else_label = fresh_label "else" in
       let end_label = fresh_label "endif" in

@@ -203,7 +203,7 @@ let rewrite_spills instrs allocation save_bisas =
             if Hashtbl.length use_map = 0 then t_spill1_vreg else t_spill2_vreg
         in
         let offset = Hashtbl.find spill_map vreg in
-        load_instrs := IR_Lw (temp_vreg, offset, 0) :: !load_instrs;
+        load_instrs := IR_Lw (temp_vreg, offset, 10) :: !load_instrs;
         Hashtbl.add use_map vreg temp_vreg
       )
     in
@@ -215,7 +215,7 @@ let rewrite_spills instrs allocation save_bisas =
       if Hashtbl.mem spill_map d then
         let temp_vreg = t_spill1_vreg in
         let offset = Hashtbl.find spill_map d in
-        store_instrs := IR_Sw (temp_vreg, offset, 0) :: !store_instrs;
+        store_instrs := IR_Sw (temp_vreg, offset, 10) :: !store_instrs;
         Hashtbl.add def_map d temp_vreg
     ) defs;
 
@@ -526,7 +526,7 @@ let generate_riscv (Program_ir prog_ir) =
     let allocation = linear_scan_allocator other_vregs live_across_call in
     
     (* 在分配表中添加预涂色的寄存器 *)
-    Hashtbl.add allocation 0 (Some S0); (* FP is s0 *)
+    Hashtbl.add allocation 0 (Some ZERO); (* static zero reg*)
     Hashtbl.add allocation 1 (Some A0);
     Hashtbl.add allocation 2 (Some A1);
     Hashtbl.add allocation 3 (Some A2);
@@ -535,6 +535,7 @@ let generate_riscv (Program_ir prog_ir) =
     Hashtbl.add allocation 6 (Some A5);
     Hashtbl.add allocation 7 (Some A6);
     Hashtbl.add allocation 8 (Some A7);
+    Hashtbl.add allocation 10 (Some S0); (* FP is S0 *)
     Hashtbl.add allocation t_spill1_vreg (Some T5);
     Hashtbl.add allocation t_spill2_vreg (Some T6);
 

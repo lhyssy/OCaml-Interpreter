@@ -5,8 +5,7 @@ abs:
 	sw s0, 12(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
-	addi t1, x0, 0
-	bge t0, t1, else_0
+	bge t0, zero, else_0
 	addi t1, x0, 0
 	sub t1, t1, t0
 	addi a0, t1, 0

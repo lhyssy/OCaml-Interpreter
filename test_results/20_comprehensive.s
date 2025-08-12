@@ -39,17 +39,15 @@ fibonacci_return:
 	jalr x0, ra, 0
 
 gcd:
-	addi sp, sp, -32
-	sw ra, 28(sp)
-	sw s0, 24(sp)
-	sw s1, 20(sp)
-	sw s2, 16(sp)
-	sw s3, 12(sp)
-	addi s0, sp, 32
+	addi sp, sp, -16
+	sw ra, 12(sp)
+	sw s0, 8(sp)
+	sw s1, 4(sp)
+	sw s2, 0(sp)
+	addi s0, sp, 16
 	addi s1, a0, 0
 	addi s2, a1, 0
-	addi s3, x0, 0
-	bne s2, s3, else_2
+	bne s2, x0, else_2
 	addi a0, s1, 0
 	jal x0, gcd_return
 else_2:
@@ -61,12 +59,11 @@ else_2:
 	addi a0, t0, 0
 	jal x0, gcd_return
 gcd_return:
-	lw ra, 28(sp)
-	lw s0, 24(sp)
-	lw s1, 20(sp)
-	lw s2, 16(sp)
-	lw s3, 12(sp)
-	addi sp, sp, 32
+	lw ra, 12(sp)
+	lw s0, 8(sp)
+	lw s1, 4(sp)
+	lw s2, 0(sp)
+	addi sp, sp, 16
 	jalr x0, ra, 0
 
 isPrime:
@@ -93,8 +90,7 @@ else_6:
 	bne t1, x0, or_true_10
 	addi t1, x0, 3
 	rem t1, t0, t1
-	addi t2, x0, 0
-	bne t1, t2, else_8
+	bne t1, x0, else_8
 or_true_10:
 	addi a0, x0, 0
 	jal x0, isPrime_return
@@ -112,8 +108,7 @@ while_start_11:
 	addi t2, x0, 2
 	add t2, t1, t2
 	rem t2, t0, t2
-	addi t3, x0, 0
-	bne t2, t3, else_14
+	bne t2, x0, else_14
 or_true_16:
 	addi a0, x0, 0
 	jal x0, isPrime_return
@@ -135,8 +130,7 @@ factorial:
 	addi t0, a0, 0
 	addi t1, x0, 1
 while_start_17:
-	addi t2, x0, 0
-	bge t2, t0, while_end_19
+	bge zero, t0, while_end_19
 	mul t1, t1, t0
 	addi t0, t0, -1
 	jal x0, while_start_17
@@ -213,8 +207,7 @@ power:
 	addi t1, a1, 0
 	addi t2, x0, 1
 while_start_25:
-	addi t3, x0, 0
-	bge t3, t1, while_end_27
+	bge zero, t1, while_end_27
 	addi t3, x0, 2
 	rem t3, t1, t3
 	addi t4, x0, 1
@@ -345,6 +338,32 @@ while_start_49:
 	bge t2, t1, while_end_51
 	addi t2, t2, 1
 	addi t1, x0, 0
+	addi t0, x0, 3
+	rem t0, t1, t0
+	bne t0, x0, else_52
+	add t3, t3, t1
+	jal x0, endif_53
+else_52:
+	addi t0, x0, 3
+	rem t0, t1, t0
+	addi t4, x0, 1
+	bne t0, t4, else_54
+	sub t3, t3, t1
+	jal x0, endif_55
+else_54:
+	slli t3, t3, 1
+	addi t1, x0, 50
+	bge t3, t1, else_56
+	jal x0, while_continue_50
+else_56:
+	addi t3, t3, 1
+	addi t1, x0, 100
+	bge t1, t3, else_58
+	jal x0, while_end_51
+else_58:
+endif_55:
+endif_53:
+while_continue_50:
 	jal x0, while_start_49
 while_end_51:
 	addi a0, t3, 0
@@ -363,25 +382,23 @@ shortCircuit:
 	addi t0, a0, 0
 	addi t1, a1, 0
 	addi t2, x0, 0
-	addi t3, x0, 0
-	bge t3, t0, else_52
+	bge zero, t0, else_60
 	div t3, t1, t0
 	addi t4, x0, 2
-	bge t4, t3, else_52
+	bge t4, t3, else_60
 	addi t2, t2, 22
-	jal x0, endif_53
-else_52:
-endif_53:
+	jal x0, endif_61
+else_60:
+endif_61:
 	addi t3, x0, 0
 	slt t0, t0, t3
-	bne t0, x0, or_true_56
-	addi t0, x0, 0
-	bge t1, t0, else_54
-or_true_56:
+	bne t0, x0, or_true_64
+	bge t1, zero, else_62
+or_true_64:
 	addi t2, t2, 32
-	jal x0, endif_55
-else_54:
-endif_55:
+	jal x0, endif_63
+else_62:
+endif_63:
 	addi a0, t2, 0
 	jal x0, shortCircuit_return
 shortCircuit_return:
@@ -397,43 +414,41 @@ nestedLoopsAndConditions:
 	addi t0, a0, 0
 	addi t1, x0, 0
 	addi t2, x0, 0
-while_start_57:
-	bge t2, t0, while_end_59
+while_start_65:
+	bge t2, t0, while_end_67
 	addi t3, x0, 0
-while_start_60:
-	bge t3, t2, while_end_62
+while_start_68:
+	bge t3, t2, while_end_70
 	add t4, t2, t3
 	addi s1, x0, 2
 	rem t4, t4, s1
-	addi s1, x0, 0
-	bne t4, s1, else_63
+	bne t4, x0, else_71
 	mul t4, t2, t3
 	sub t1, t1, t4
-	jal x0, endif_64
-else_63:
+	jal x0, endif_72
+else_71:
 	mul t4, t2, t3
 	add t1, t1, t4
-	addi t4, x0, 0
-	bge t1, t4, else_65
+	bge t1, zero, else_73
 	addi t1, x0, 0
-	jal x0, while_continue_61
-else_65:
-endif_64:
+	jal x0, while_continue_69
+else_73:
+endif_72:
 	addi t4, x0, 952
-	bge t4, t1, else_67
-	jal x0, while_end_62
-else_67:
+	bge t4, t1, else_75
+	jal x0, while_end_70
+else_75:
 	addi t3, t3, 1
-while_continue_61:
-	jal x0, while_start_60
-while_end_62:
+while_continue_69:
+	jal x0, while_start_68
+while_end_70:
 	addi t3, x0, 1007
-	bge t3, t1, else_69
-	jal x0, while_end_59
-else_69:
+	bge t3, t1, else_77
+	jal x0, while_end_67
+else_77:
 	addi t2, t2, 1
-	jal x0, while_start_57
-while_end_59:
+	jal x0, while_start_65
+while_end_67:
 	addi a0, t1, 0
 	jal x0, nestedLoopsAndConditions_return
 nestedLoopsAndConditions_return:
@@ -454,12 +469,11 @@ func1:
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, a2, 0
-	addi s4, x0, 0
-	bne s3, s4, else_71
+	bne s3, x0, else_79
 	mul s4, s1, s2
 	addi a0, s4, 0
 	jal x0, func1_return
-else_71:
+else_79:
 	sub s2, s2, s3
 	addi s3, x0, 0
 	addi a0, s1, 0
@@ -489,7 +503,7 @@ func2:
 	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
-	beq s2, x0, else_73
+	beq s2, x0, else_81
 	rem s2, s1, s2
 	addi s3, x0, 0
 	addi a0, s2, 0
@@ -498,7 +512,7 @@ func2:
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, func2_return
-else_73:
+else_81:
 	addi a0, s1, 0
 	jal x0, func2_return
 func2_return:
@@ -520,13 +534,12 @@ func3:
 	addi s0, sp, 32
 	addi s1, a0, 0
 	addi s2, a1, 0
-	addi s3, x0, 0
-	bne s2, s3, else_75
+	bne s2, x0, else_83
 	addi s3, x0, 1
 	add s3, s1, s3
 	addi a0, s3, 0
 	jal x0, func3_return
-else_75:
+else_83:
 	add s1, s1, s2
 	addi s2, x0, 0
 	addi a0, s1, 0
@@ -551,10 +564,10 @@ func4:
 	addi t0, a0, 0
 	addi t1, a1, 0
 	addi t2, a2, 0
-	beq t0, x0, else_77
+	beq t0, x0, else_85
 	addi a0, t1, 0
 	jal x0, func4_return
-else_77:
+else_85:
 	addi a0, t2, 0
 	jal x0, func4_return
 func4_return:
@@ -582,11 +595,11 @@ func6:
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, a1, 0
-	beq t0, x0, else_79
-	beq t1, x0, else_79
+	beq t0, x0, else_87
+	beq t1, x0, else_87
 	addi a0, x0, 1
 	jal x0, func6_return
-else_79:
+else_87:
 	addi a0, x0, 0
 	jal x0, func6_return
 func6_return:
@@ -599,10 +612,10 @@ func7:
 	sw s0, 12(sp)
 	addi s0, sp, 16
 	addi t0, a0, 0
-	bne t0, x0, else_81
+	bne t0, x0, else_89
 	addi a0, x0, 1
 	jal x0, func7_return
-else_81:
+else_89:
 	addi a0, x0, 0
 	jal x0, func7_return
 func7_return:
@@ -611,147 +624,42 @@ func7_return:
 	jalr x0, ra, 0
 
 nestedCalls:
-	addi sp, sp, -64
-	sw ra, 60(sp)
-	sw s0, 56(sp)
-	sw s1, 52(sp)
-	sw s10, 48(sp)
-	sw s11, 44(sp)
-	sw s2, 40(sp)
-	sw s3, 36(sp)
-	sw s4, 32(sp)
-	sw s5, 28(sp)
-	sw s6, 24(sp)
-	sw s7, 20(sp)
-	sw s8, 16(sp)
-	sw s9, 12(sp)
-	addi s0, sp, 64
+	addi sp, sp, -80
+	sw ra, 76(sp)
+	sw s0, 72(sp)
+	sw s1, 68(sp)
+	sw s10, 64(sp)
+	sw s11, 60(sp)
+	sw s2, 56(sp)
+	sw s3, 52(sp)
+	sw s4, 48(sp)
+	sw s5, 44(sp)
+	sw s6, 40(sp)
+	sw s7, 36(sp)
+	sw s8, 32(sp)
+	sw s9, 28(sp)
+	addi s0, sp, 80
 	addi s1, a0, 0
 	addi s2, a1, 0
 	addi s3, a2, 0
 	addi t5, a3, 0
-	sw t5, -64(s0)
-	addi s5, a4, 0
-	addi s6, a5, 0
-	addi s7, a6, 0
-	addi t5, a7, 0
+	sw t5, -80(s0)
+	addi t5, a4, 0
 	sw t5, -56(s0)
-	lw s9, 0(s0)
+	addi s6, a5, 0
+	addi t5, a6, 0
+	sw t5, -72(s0)
+	addi t5, a7, 0
+	sw t5, -68(s0)
+	lw t5, 0(s0)
+	sw t5, -64(s0)
 	lw t5, 4(s0)
+	sw t5, -76(s0)
+	addi t5, x0, 9
 	sw t5, -60(s0)
-	addi s11, x0, 9
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s11, 0
-	jal ra, func7
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s11, a0, 0
 	addi s4, x0, 1
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s4, 0
-	jal ra, func5
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s4, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s11, 0
-	addi a1, s4, 0
-	jal ra, func6
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s4, a0, 0
 	addi s11, x0, 7
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s4, 0
-	addi a1, s11, 0
-	jal ra, func2
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s11, a0, 0
-	addi s4, x0, 14
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s11, 0
-	addi a1, s4, 0
-	jal ra, func3
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s4, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s4, 0
-	jal ra, func5
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s4, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s2, 0
-	jal ra, func5
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s11, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	lw t5, -64(s0)
-	addi a0, t5, 0
-	jal ra, func7
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s10, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s3, 0
-	addi a1, s10, 0
-	jal ra, func6
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s10, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s6, 0
-	jal ra, func7
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s8, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s5, 0
-	addi a1, s8, 0
-	jal ra, func2
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s8, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s11, 0
-	addi a1, s10, 0
-	addi a2, s8, 0
-	jal ra, func4
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s8, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s8, 0
-	addi a1, s7, 0
-	jal ra, func3
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s8, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s8, 0
-	lw t5, -56(s0)
-	addi a1, t5, 0
-	jal ra, func2
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s8, a0, 0
+	addi s10, x0, 14
 	addi sp, sp, -4
 	sw t5, 0(sp)
 	lw t5, -60(s0)
@@ -759,7 +667,30 @@ nestedCalls:
 	jal ra, func7
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s10, a0, 0
+	addi s8, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s4, 0
+	jal ra, func5
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s9, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s8, 0
+	addi a1, s9, 0
+	jal ra, func6
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s9, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s9, 0
+	addi a1, s11, 0
+	jal ra, func2
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s9, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
 	addi a0, s9, 0
@@ -767,63 +698,150 @@ nestedCalls:
 	jal ra, func3
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s10, a0, 0
-	addi s11, x0, 9
+	addi s9, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s8, 0
-	addi a1, s10, 0
-	addi a2, s11, 0
-	jal ra, func1
+	addi a0, s9, 0
+	jal ra, func5
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s11, a0, 0
+	addi s9, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s4, 0
-	addi a1, s1, 0
-	addi a2, s11, 0
-	jal ra, func4
+	addi a0, s2, 0
+	jal ra, func5
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s11, a0, 0
-	addi s4, x0, 1
-	addi s10, x0, 7
+	addi s8, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s10, 0
+	lw t5, -80(s0)
+	addi a0, t5, 0
 	jal ra, func7
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s10, a0, 0
-	addi s8, x0, 14
+	addi s7, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s10, 0
-	addi a1, s8, 0
-	jal ra, func3
+	addi a0, s3, 0
+	addi a1, s7, 0
+	jal ra, func6
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s8, a0, 0
+	addi s7, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s4, 0
-	addi a1, s8, 0
+	addi a0, s6, 0
+	jal ra, func7
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s5, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	lw t5, -56(s0)
+	addi a0, t5, 0
+	addi a1, s5, 0
 	jal ra, func2
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s8, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s11, 0
-	addi a1, s8, 0
-	jal ra, func3
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s8, a0, 0
+	addi s5, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
 	addi a0, s8, 0
+	addi a1, s7, 0
+	addi a2, s5, 0
+	jal ra, func4
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s5, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s5, 0
+	lw t5, -72(s0)
+	addi a1, t5, 0
+	jal ra, func3
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s5, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s5, 0
+	lw t5, -68(s0)
+	addi a1, t5, 0
+	jal ra, func2
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s5, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	lw t5, -76(s0)
+	addi a0, t5, 0
+	jal ra, func7
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s7, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	lw t5, -64(s0)
+	addi a0, t5, 0
+	addi a1, s7, 0
+	jal ra, func3
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s7, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s5, 0
+	addi a1, s7, 0
+	lw t5, -60(s0)
+	addi a2, t5, 0
+	jal ra, func1
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s7, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s9, 0
+	addi a1, s1, 0
+	addi a2, s7, 0
+	jal ra, func4
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s7, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s11, 0
+	jal ra, func7
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s11, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s11, 0
+	addi a1, s10, 0
+	jal ra, func3
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s10, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s4, 0
+	addi a1, s10, 0
+	jal ra, func2
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s10, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s7, 0
+	addi a1, s10, 0
+	jal ra, func3
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s10, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s10, 0
 	addi a1, s1, 0
 	addi a2, s2, 0
 	jal ra, func1
@@ -847,7 +865,8 @@ nestedCalls:
 	addi s6, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s5, 0
+	lw t5, -56(s0)
+	addi a0, t5, 0
 	addi a1, s6, 0
 	jal ra, func3
 	lw t5, 0(sp)
@@ -855,84 +874,86 @@ nestedCalls:
 	addi s6, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s7, 0
-	jal ra, func5
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s7, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s6, 0
-	addi a1, s7, 0
-	jal ra, func2
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s7, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s9, 0
-	jal ra, func7
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s9, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	addi a0, s7, 0
-	lw t5, -56(s0)
-	addi a1, t5, 0
-	addi a2, s9, 0
-	jal ra, func1
-	lw t5, 0(sp)
-	addi sp, sp, 4
-	addi s9, a0, 0
-	addi sp, sp, -4
-	sw t5, 0(sp)
-	lw t5, -60(s0)
+	lw t5, -72(s0)
 	addi a0, t5, 0
 	jal ra, func5
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s7, a0, 0
+	addi s2, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s9, 0
-	addi a1, s7, 0
+	addi a0, s6, 0
+	addi a1, s2, 0
 	jal ra, func2
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s7, a0, 0
-	addi s9, x0, 9
+	addi s2, a0, 0
 	addi sp, sp, -4
 	sw t5, 0(sp)
-	addi a0, s7, 0
-	addi a1, s9, 0
+	lw t5, -64(s0)
+	addi a0, t5, 0
+	jal ra, func7
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s6, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s2, 0
+	lw t5, -68(s0)
+	addi a1, t5, 0
+	addi a2, s6, 0
+	jal ra, func1
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s6, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	lw t5, -76(s0)
+	addi a0, t5, 0
+	jal ra, func5
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s2, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s6, 0
+	addi a1, s2, 0
+	jal ra, func2
+	lw t5, 0(sp)
+	addi sp, sp, 4
+	addi s2, a0, 0
+	addi sp, sp, -4
+	sw t5, 0(sp)
+	addi a0, s2, 0
+	lw t5, -60(s0)
+	addi a1, t5, 0
 	jal ra, func3
 	lw t5, 0(sp)
 	addi sp, sp, 4
-	addi s9, a0, 0
+	addi s2, a0, 0
 	addi a0, s3, 0
-	lw t5, -64(s0)
+	lw t5, -80(s0)
 	addi a1, t5, 0
-	addi a2, s9, 0
+	addi a2, s2, 0
 	jal ra, func1
 	addi t0, a0, 0
 	addi a0, t0, 0
 	jal x0, nestedCalls_return
 nestedCalls_return:
-	lw ra, 60(sp)
-	lw s0, 56(sp)
-	lw s1, 52(sp)
-	lw s10, 48(sp)
-	lw s11, 44(sp)
-	lw s2, 40(sp)
-	lw s3, 36(sp)
-	lw s4, 32(sp)
-	lw s5, 28(sp)
-	lw s6, 24(sp)
-	lw s7, 20(sp)
-	lw s8, 16(sp)
-	lw s9, 12(sp)
-	addi sp, sp, 64
+	lw ra, 76(sp)
+	lw s0, 72(sp)
+	lw s1, 68(sp)
+	lw s10, 64(sp)
+	lw s11, 60(sp)
+	lw s2, 56(sp)
+	lw s3, 52(sp)
+	lw s4, 48(sp)
+	lw s5, 44(sp)
+	lw s6, 40(sp)
+	lw s7, 36(sp)
+	lw s8, 32(sp)
+	lw s9, 28(sp)
+	addi sp, sp, 80
 	jalr x0, ra, 0
 
 main:
@@ -941,7 +962,7 @@ main:
 	sw s0, 24(sp)
 	addi s0, sp, 32
 	addi t5, x0, 0
-	sw t5, -28(s0)
+	sw t5, -20(s0)
 	addi s1, x0, 12
 	addi sp, sp, -4
 	sw t5, 0(sp)
@@ -951,10 +972,10 @@ main:
 	addi sp, sp, 4
 	addi s1, a0, 0
 	addi s2, x0, 144
-	beq s1, s2, else_83
+	beq s1, s2, else_91
 	addi a0, x0, 0
 	jal x0, main_return
-else_83:
+else_91:
 	addi s2, x0, 39
 	addi s3, x0, 31
 	addi sp, sp, -4
@@ -966,10 +987,10 @@ else_83:
 	addi sp, sp, 4
 	addi s3, a0, 0
 	addi s2, x0, 1
-	beq s3, s2, else_85
+	beq s3, s2, else_93
 	addi a0, x0, 0
 	jal x0, main_return
-else_85:
+else_93:
 	addi s2, x0, 18
 	addi sp, sp, -4
 	sw t5, 0(sp)
@@ -978,11 +999,10 @@ else_85:
 	lw t5, 0(sp)
 	addi sp, sp, 4
 	addi s2, a0, 0
-	addi s4, x0, 0
-	beq s2, s4, else_87
+	beq s2, x0, else_95
 	addi a0, x0, 0
 	jal x0, main_return
-else_87:
+else_95:
 	addi s4, x0, 6
 	addi sp, sp, -4
 	sw t5, 0(sp)
@@ -994,10 +1014,10 @@ else_87:
 	sw t5, -16(s0)
 	addi s5, x0, 720
 	lw t5, -16(s0)
-	beq t5, s5, else_89
+	beq t5, s5, else_97
 	addi a0, x0, 0
 	jal x0, main_return
-else_89:
+else_97:
 	addi s5, x0, 9
 	addi s6, x0, 9
 	addi sp, sp, -4
@@ -1008,13 +1028,13 @@ else_89:
 	lw t5, 0(sp)
 	addi sp, sp, 4
 	addi t5, a0, 0
-	sw t5, -20(s0)
+	sw t5, -28(s0)
 	addi s5, x0, 1
-	lw t5, -20(s0)
-	beq t5, s5, else_91
+	lw t5, -28(s0)
+	beq t5, s5, else_99
 	addi a0, x0, 0
 	jal x0, main_return
-else_91:
+else_99:
 	addi s5, x0, 3
 	addi s7, x0, 10
 	addi sp, sp, -4
@@ -1025,13 +1045,13 @@ else_91:
 	lw t5, 0(sp)
 	addi sp, sp, 4
 	addi t5, a0, 0
-	sw t5, -24(s0)
+	sw t5, -12(s0)
 	li s5, 59049
-	lw t5, -24(s0)
-	beq t5, s5, else_93
+	lw t5, -12(s0)
+	beq t5, s5, else_101
 	addi a0, x0, 0
 	jal x0, main_return
-else_93:
+else_101:
 	addi s5, x0, 8
 	addi s8, x0, 3
 	addi s9, x0, 8
@@ -1062,7 +1082,7 @@ else_93:
 	lw t5, 0(sp)
 	addi sp, sp, 4
 	addi t5, a0, 0
-	sw t5, -12(s0)
+	sw t5, -24(s0)
 	addi s8, x0, 539
 	addi s9, x0, 908
 	addi s5, x0, 686
@@ -1104,24 +1124,24 @@ else_93:
 	lw t5, -16(s0)
 	rem t2, t5, t2
 	add t0, t0, t2
-	lw t5, -20(s0)
+	lw t5, -28(s0)
 	slli t2, t5, 1
 	li t3, 37633
 	rem t2, t2, t3
 	sub t0, t0, t2
-	lw t5, -24(s0)
+	lw t5, -12(s0)
 	slli t2, t5, 1
 	li t3, 37633
 	rem t2, t2, t3
 	add t0, t0, t2
-	lw t5, -12(s0)
+	lw t5, -24(s0)
 	slli t2, t5, 1
 	sub t0, t0, t2
 	addi t2, x0, 254
 	rem t0, t0, t2
 	add t5, t1, t0
-	sw t5, -28(s0)
-	lw t5, -28(s0)
+	sw t5, -20(s0)
+	lw t5, -20(s0)
 	addi a0, t5, 0
 	jal x0, main_return
 main_return:

@@ -8,18 +8,12 @@ main:
 	addi t0, x0, 1
 	addi t1, x0, 2
 	addi t2, x0, 3
-	addi t3, x0, 1
-	addi t0, t3, 0
-	addi t3, x0, 3
-	addi t2, t3, 0
-	addi t3, x0, 5
-	addi t0, t3, 0
-	addi t3, x0, 8
-	addi t2, t3, 0
-	sub t3, t1, t2
-	addi t1, t3, 0
-	add t3, t1, t0
-	addi t1, t3, 0
+	addi t0, x0, 1
+	addi t2, x0, 3
+	addi t0, x0, 5
+	add t2, t2, t0
+	sub t1, t1, t2
+	add t1, t1, t0
 	add t0, t0, t1
 	add t2, t0, t2
 	addi a0, t2, 0

@@ -6,8 +6,7 @@ factorial:
 	addi s0, sp, 16
 	addi t0, a0, 0
 	addi t1, x0, 1
-	addi t2, x0, 0
-	blt t2, t0, else_0
+	blt zero, t0, else_0
 	addi a0, x0, 1
 	jal x0, factorial_return
 else_0:
@@ -30,36 +29,87 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	addi s1, x0, 0
-	addi s2, x0, 3
-	addi s3, x0, 1
-while_start_5:
+	addi s1, x0, -2
+	addi s2, x0, -1
+	addi s3, x0, 0
+	bge s2, s1, else_5
+	sub s4, s1, s2
+	addi s5, x0, 1
+	bge s5, s4, else_5
 	addi s4, x0, 1
-	bge s4, s2, while_end_7
-	mul s3, s3, s2
-	addi s2, s2, -1
-	jal x0, while_start_5
-while_end_7:
-	addi s1, s3, 0
-while_start_8:
-	addi s3, x0, 100
-	bge s3, s1, while_end_10
-	addi s3, x0, 2
-	rem s3, s1, s3
-	addi s2, x0, 0
-	bne s3, s2, else_11
-	srli s1, s1, 1
-	jal x0, endif_12
-else_11:
+	blt zero, s1, else_7
+	addi s3, x0, 1
+	jal x0, endif_8
+else_7:
+while_start_9:
+	addi s5, x0, 1
+	bge s5, s1, while_end_11
+	mul s4, s4, s1
 	addi s1, s1, -1
-endif_12:
-	jal x0, while_start_8
-while_end_10:
-	addi s3, x0, 3
-	addi a0, s3, 0
+	jal x0, while_start_9
+while_end_11:
+	addi s3, s4, 0
+endif_8:
+	jal x0, endif_6
+else_5:
+	slt s4, s1, s2
+	bne s4, x0, or_true_14
+	bne s1, s2, else_12
+or_true_14:
+	add s4, s1, s2
+	addi s5, x0, 0
+	sub s4, s5, s4
+	addi s5, x0, 1
+	blt zero, s4, else_15
+	addi s3, x0, 1
+	jal x0, endif_16
+else_15:
+while_start_17:
+	addi s6, x0, 1
+	bge s6, s4, while_end_19
+	mul s5, s5, s4
+	addi s4, s4, -1
+	jal x0, while_start_17
+while_end_19:
+	addi s3, s5, 0
+endif_16:
+	jal x0, endif_13
+else_12:
+	mul s1, s1, s2
+	addi s2, x0, 1
+	blt zero, s1, else_20
+	addi s3, x0, 1
+	jal x0, endif_21
+else_20:
+while_start_22:
+	addi s5, x0, 1
+	bge s5, s1, while_end_24
+	mul s2, s2, s1
+	addi s1, s1, -1
+	jal x0, while_start_22
+while_end_24:
+	addi s3, s2, 0
+endif_21:
+endif_13:
+endif_6:
+while_start_25:
+	addi s2, x0, 100
+	bge s2, s3, while_end_27
+	addi s2, x0, 2
+	rem s2, s3, s2
+	bne s2, x0, else_28
+	srli s3, s3, 1
+	jal x0, endif_29
+else_28:
+	addi s3, s3, -1
+endif_29:
+	jal x0, while_start_25
+while_end_27:
+	addi s2, x0, 3
+	addi a0, s2, 0
 	jal ra, factorial
 	addi t0, a0, 0
-	div t0, s1, t0
+	div t0, s3, t0
 	addi a0, t0, 0
 	jal x0, main_return
 main_return:
