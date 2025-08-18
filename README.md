@@ -5,21 +5,22 @@
 ## 项目结构
 
 - `lib/`: 编译器核心库
-  - `lexer.mll`: 词法分析器
-  - `parser.mly`: 语法分析器
+  - `lexer.mll`: 词法分析文件（Ocamllex工具对应文件）
+  - `parser.mly`: 语法分析文件（Ocamlyacc工具对应文件）
   - `ast.ml`: 抽象语法树定义
   - `string_of_ast.ml`：存放抽象语法树转化为字符串的函数，用于调试输出
   - `optimizer.ml`：优化AST结构的模块
-  - `ir.ml`：中间形式（IR）的模式定义
+  - `ir.ml`：中间形式IR的模式定义
   - `irgen.ml`：中间形式生成器，将语法树AST转化为中间形式
+  - `optimizer2.ml`：优化IR结构的模块
   - `codegen.ml`: 代码生成器（RISC-V 汇编），将中间形式转化为汇编
   - `tool.ml`：其他工具
 - `bin/`: 编译器可执行文件
   - `main.ml`: 主程序
 - `test/`: 测试文件，存放测试用源文件
-  - `oldtest/`：旧的，保存的旧测试文件夹
   - `test_interpreter_project.ml`：用于批量测试的测试文件
 - `test_results/`：测试文件的编译结果
+- `test_build/`: 另外的一个测试文件夹
 
 ## ToyC 语言
 
