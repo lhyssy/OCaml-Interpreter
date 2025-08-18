@@ -4,7 +4,7 @@ module VMap = Map.Make(String)
 module SSet = Set.Make(String)
 
 type env_stack = {
-  current: int VMap.t;  (* 当前作用域 *)
+  current: (int option) VMap.t;  (* 当前作用域 *)
   parent: env_stack option (* 仅允许访问直接父级 *)
 }
 
@@ -15,7 +15,7 @@ let rec lookup_var stack name =
   match stack with
   | {current; parent} ->
       match VMap.find_opt name current with
-      | Some v -> Some v
+      | Some v -> v
       | None -> 
           match parent with
           | Some p -> lookup_var p name
@@ -23,16 +23,7 @@ let rec lookup_var stack name =
 ;;
 
 let add_var stack name value =
-  { current = VMap.add name value stack.current; parent = stack.parent }
-;;
-
-let rec remove_var stack name =
-  if VMap.mem name stack.current then
-    { current = VMap.remove name stack.current; parent = stack.parent }
-  else
-    match stack.parent with
-    | Some parent -> { current = stack.current; parent = Some (remove_var parent name) }
-    | None -> stack (* 如果没有父级，则不更新 *)
+  { current = VMap.add name (Some value) stack.current; parent = stack.parent }
 ;;
 
 let rec update_stack stack name value =
@@ -45,13 +36,36 @@ let rec update_stack stack name value =
 ;;
 
 let rec remove_var_through stack name = 
-  let new_cur = VMap.remove name stack.current in
+  let new_cur = VMap.add name None stack.current in
   let new_parent = 
     match stack.parent with
     | Some p -> Some (remove_var_through p name)
     | None -> None
   in
   { current = new_cur; parent = new_parent }
+;;
+
+let rec merge_stacks stack1 stack2 =
+  let merge_vmap st1 st2 = VMap.merge (fun _ v1 v2 ->
+      match v1, v2 with
+      | Some (Some n), Some (Some m) -> Some ((if n = m then Some(n) else None))
+      | Some (Some _), Some (None) 
+      | Some (None), Some (Some _)
+      | Some (None), Some (None) -> Some (None)
+      | _ ->
+        (*Printf.printf "Warning: Merging varible has unknown value\n"; *)
+        None
+  ) st1 st2 in
+
+  let merged_current = merge_vmap stack1.current stack2.current in
+  let merged_parent = 
+    match stack1.parent, stack2.parent with
+    | Some p1, Some p2 -> Some (merge_stacks p1 p2)
+    | Some p, None -> Some p
+    | None, Some p -> Some p
+    | None, None -> None
+  in
+  { current = merged_current; parent = merged_parent }
 ;;
 
 let enter_stack stack =
@@ -82,6 +96,7 @@ let rec remove_const stack stmt =
   | _ -> stack
 ;;
 
+(*
 let print_stack stack =
   let rec string_of_stack st =
     match st with
@@ -93,7 +108,7 @@ let print_stack stack =
       | None -> cur_str
   in
   Printf.printf "Current scope: %s\n" (string_of_stack stack);
-;;
+;;*)
 
 (* 计算二元运算结果 *)
 let eval_binop op n1 n2 =
@@ -133,7 +148,8 @@ let rec simplify_expr stack_env expr =
     又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
     *)
     (match VMap.find_opt name stack_env.current with
-      _ -> EVar name
+      | Some (Some n) -> EInt n (* 如果变量有值，直接替换为常量 *)
+      | _ -> EVar name
     )
   | EUnop (op, e) ->
       let se = simplify_expr stack_env e in
@@ -245,14 +261,14 @@ let rec optimize_stmt (stmt, const_env) =
       let new_env = 
         match se with
         | EInt n -> add_var const_env name n
-        | _ -> remove_var const_env name
+        | _ -> update_stack const_env name None
       in
       (SDeclare (name, se), new_env)
   | SAssign (name, expr) ->
     let se = simplify_expr const_env expr in
     let new_stack = match se with
-    | EInt n -> update_stack const_env name n
-    | _ -> remove_var const_env name
+    | EInt n -> update_stack const_env name (Some n)
+    | _ -> update_stack const_env name None
     in
     (SAssign (name, se), new_stack)
   | SIf (cond, then_s, else_opt) ->
@@ -269,14 +285,14 @@ let rec optimize_stmt (stmt, const_env) =
             | None -> (SEmpty, const_env)
           )
         | _ ->
-           let const_env = remove_const const_env stmt in
-           let (st, _) = optimize_stmt (then_s, enter_stack const_env) in
-           let (se_opt, _) = 
+           let (st, st1) = optimize_stmt (then_s, enter_stack const_env) in
+           let (se_opt, st2) = 
             match else_opt with
               | Some s -> let (os, oe) = 
               optimize_stmt (s, enter_stack const_env) in (Some os, oe)
               | None -> (None, enter_stack const_env)
            in
+           let const_env = merge_stacks st1 st2 in
            (SIf (sc, st, se_opt), const_env)
       )
   | SWhile (cond, body) ->

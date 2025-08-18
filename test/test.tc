@@ -1,22 +1,13 @@
 int main(){
-    // test the folding
-    int x = 1;
-    int y = 2;
-    int z = 3;
-    {
-        x = 1;
-        {
-            z = 3;
-            {
-                {
-                    x = 5;
-                    z = z + x;
-                }
-            }
-            y = y - z;
-        }
-        y = y + x;
+    // testing about constant folding and so
+
+    int x = 100;
+    int alpha = 50;
+
+    while(x > 0){
+        x = x - 1;
+        alpha = alpha + 2;
     }
 
-    return x + y + z;
+    return alpha * x; // 这里不应该被消除
 }
