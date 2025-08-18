@@ -147,8 +147,8 @@ let rec simplify_expr stack_env expr =
     尝试排查了部分env，但是还是找不到错误在哪里 
     又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
     *)
-    (match VMap.find_opt name stack_env.current with
-      | Some (Some n) -> EInt n (* 如果变量有值，直接替换为常量 *)
+    (match lookup_var stack_env name  with
+      | Some n -> EInt n (* 如果变量有值，直接替换为常量 *)
       | _ -> EVar name
     )
   | EUnop (op, e) ->
