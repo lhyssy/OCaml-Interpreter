@@ -1,4 +1,5 @@
 open Ast
+open String_of_ast
 
 module VMap = Map.Make(String)
 module SSet = Set.Make(String)
@@ -110,6 +111,12 @@ let print_stack stack =
   Printf.printf "Current scope: %s\n" (string_of_stack stack);
 ;;*)
 
+let pack_block stmt =
+  match stmt with
+  | SBlock _ -> stmt
+  | st -> SBlock [st]
+;;
+
 (* 计算二元运算结果 *)
 let eval_binop op n1 n2 =
   match op with
@@ -148,7 +155,7 @@ let rec simplify_expr stack_env expr =
     又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
     *)
     (match lookup_var stack_env name  with
-      (*| Some n -> EInt n *)
+      | Some n -> EInt n
       | _ -> EVar name
     )
   | EUnop (op, e) ->
@@ -275,11 +282,13 @@ let rec optimize_stmt (stmt, const_env) =
       let sc = simplify_expr const_env cond in(
       match sc with
         | EInt n when n <> 0 ->
+          let then_s = pack_block then_s in
           let stmt, stack = optimize_stmt (then_s, enter_stack const_env) in
           (stmt, exit_stack stack)
         | EInt n when n = 0 ->(
           match else_opt with 
             | Some s -> 
+              let s = pack_block s in
               let stmt, stack = optimize_stmt (s, enter_stack const_env) in
               (stmt, exit_stack stack)
             | None -> (SEmpty, const_env)
@@ -302,7 +311,7 @@ let rec optimize_stmt (stmt, const_env) =
       | _ ->
         let const_env = remove_const const_env stmt in
         let sc = simplify_expr const_env cond in
-        let (new_body, _) = optimize_stmt (body, enter_stack const_env) in
+        let (new_body, _) = optimize_stmt (pack_block body, enter_stack const_env) in
         (SWhile (sc, new_body), const_env)
       )
   | SBlock stmts ->
@@ -320,7 +329,8 @@ let rec optimize_stmt (stmt, const_env) =
       let new_stmts_rev = List.rev new_stmts in
       let final_stmt = match new_stmts_rev with
                        | [] -> SEmpty
-                       | [single] -> single
+                       | [SDeclare (_, _)] -> SEmpty
+                       | [s] -> s
                        | _ -> SBlock new_stmts_rev
       in
       (final_stmt, exit_stack new_env)
@@ -548,18 +558,20 @@ let inline_pass (Program funcs) =
 
 (* 优化函数 *)
 let optimize_func (f: func_def) : func_def =
-  (*print_endline ("Optimizing function: " ^ f.name);*)
+  print_endline ("Optimizing function: " ^ f.name);
   let (body1, env1) = optimize_stmt (f.body, new_env_stack () )  in
   let body2 = unroll_loops (body1, env1) in
-  (*
+  
   print_endline (string_of_stmt "" body2);
-  print_endline "";*)
+  print_endline "-- end of phase 1 --\n";
   
   let (body3, _) = optimize_stmt (body2, new_env_stack () ) in
-  let body4 = dce_pass body3 in
-  (*
+  (* 去除死代码的时候感觉也得考虑一下作用域的问题啊…… *)
+  (* 先删掉这个*)
+  let body4 = body3 in
+  
   print_endline (string_of_stmt "" body4);
-  print_endline "";*)
+  print_endline "-- end of phase 2 --\n";
 
   { f with body = body4 }
 

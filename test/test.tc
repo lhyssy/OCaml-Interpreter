@@ -1,13 +1,29 @@
+int echo(int x){
+    return x * 100;
+}
+
+int testRet(){
+    int x = 20;
+    {
+        int x = echo(30);
+    }
+    return x;
+}
+
+int testRet2(){
+    int x = echo(20);
+    {
+        int x = 30;
+    }
+    return x;
+}
+
 int main(){
     // testing about constant folding and so
+    int x = echo(20);
+    if(1)
+        int x = 50;
+    
 
-    int x = 100;
-    int alpha = 50;
-
-    while(x > 0){
-        x = x - 1;
-        alpha = alpha + 2;
-    }
-
-    return alpha * x; // 这里不应该被消除
+    return x; // ?
 }
