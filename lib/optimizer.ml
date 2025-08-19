@@ -11,6 +11,17 @@ type env_stack = {
 
 let new_env_stack () =
   { current = VMap.empty; parent = None }
+;;
+
+let enter_stack stack =
+  { current = VMap.empty; parent = Some stack } (* 进入新作用域，当前作用域为空 *)
+;;
+
+let exit_stack stack =
+  match stack.parent with
+  | Some parent -> parent (* 返回到父级作用域 *)
+  | None -> new_env_stack () (* 如果没有父级，则返回一个新的空栈 *)
+;;
 
 let rec lookup_var stack name =
   match stack with
@@ -23,16 +34,22 @@ let rec lookup_var stack name =
           | None -> None (* 严格作用域隔离 *)
 ;;
 
-let add_var stack name value =
-  { current = VMap.add name (Some value) stack.current; parent = stack.parent }
+let add_var stack name value = 
+  { 
+    current = VMap.add name value stack.current; 
+    parent = stack.parent
+  }
 ;;
 
-let rec update_stack stack name value =
-  if VMap.mem name stack.current then
-    { current = VMap.add name value stack.current; parent = stack.parent }
+let rec update_var stack name value =
+  if VMap.mem name stack.current then 
+  { 
+    current = VMap.add name value stack.current; 
+    parent = stack.parent 
+  }
   else
     match stack.parent with
-    | Some parent -> { current = stack.current; parent = Some (update_stack parent name value) }
+    | Some parent -> { current = stack.current; parent = Some (update_var parent name value) }
     | None -> stack (* 如果没有父级，则不更新 *)
 ;;
 
@@ -67,16 +84,6 @@ let rec merge_stacks stack1 stack2 =
     | None, None -> None
   in
   { current = merged_current; parent = merged_parent }
-;;
-
-let enter_stack stack =
-  { current = VMap.empty; parent = Some stack } (* 进入新作用域，当前作用域为空 *)
-;;
-
-let exit_stack stack =
-  match stack.parent with
-  | Some parent -> parent (* 返回到父级作用域 *)
-  | None -> new_env_stack () (* 如果没有父级，则返回一个新的空栈 *)
 ;;
 
 let rec remove_const stack stmt = 
@@ -154,7 +161,7 @@ let rec simplify_expr stack_env expr =
     尝试排查了部分env，但是还是找不到错误在哪里 
     又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
     *)
-    (match lookup_var stack_env name  with
+    (match lookup_var stack_env name with
       | Some n -> EInt n
       | _ -> EVar name
     )
@@ -264,54 +271,56 @@ let rec optimize_stmt (stmt, const_env) =
   | SReturn (Some e) -> 
     (SReturn (Some (simplify_expr const_env e)), const_env)
   | SDeclare (name, e) ->
-      let se = simplify_expr const_env e in
-      let new_env = 
-        match se with
-        | EInt n -> add_var const_env name n
-        | _ -> update_stack const_env name None
-      in
-      (SDeclare (name, se), new_env)
+    let se = simplify_expr const_env e in
+    let const_value = match se with
+      | EInt n -> Some n
+      | _ -> None
+    in
+    let new_env = add_var const_env name const_value in
+    (SDeclare (name, se), new_env)
   | SAssign (name, expr) ->
     let se = simplify_expr const_env expr in
-    let new_stack = match se with
-    | EInt n -> update_stack const_env name (Some n)
-    | _ -> update_stack const_env name None
+    let const_value = match se with
+      | EInt n -> Some n
+      | _ -> None
     in
-    (SAssign (name, se), new_stack)
+    let new_env = update_var const_env name const_value in
+    (SAssign (name, se), new_env)
   | SIf (cond, then_s, else_opt) ->
+      let then_s = pack_block then_s in
+      let else_opt = Option.map pack_block else_opt in
       let sc = simplify_expr const_env cond in(
       match sc with
         | EInt n when n <> 0 ->
-          let then_s = pack_block then_s in
-          let stmt, stack = optimize_stmt (then_s, enter_stack const_env) in
-          (stmt, exit_stack stack)
+          let stmt, stack = optimize_stmt (then_s, const_env) in
+          (stmt, stack)
         | EInt n when n = 0 ->(
           match else_opt with 
             | Some s -> 
-              let s = pack_block s in
-              let stmt, stack = optimize_stmt (s, enter_stack const_env) in
-              (stmt, exit_stack stack)
+              let stmt, stack = optimize_stmt (s, const_env) in
+              (stmt, stack)
             | None -> (SEmpty, const_env)
           )
         | _ ->
-           let (st, st1) = optimize_stmt (then_s, enter_stack const_env) in
+           let (st, st1) = optimize_stmt (then_s, const_env) in
            let (se_opt, st2) = 
             match else_opt with
               | Some s -> let (os, oe) = 
-              optimize_stmt (s, enter_stack const_env) in (Some os, oe)
-              | None -> (None, enter_stack const_env)
+              optimize_stmt (s, const_env) in (Some os, oe)
+              | None -> (None, const_env)
            in
            let const_env = merge_stacks st1 st2 in
            (SIf (sc, st, se_opt), const_env)
       )
   | SWhile (cond, body) ->
+      let body = pack_block body in
       let try_cond = simplify_expr const_env cond in(
       match try_cond with
       | EInt 0 -> (SEmpty, const_env) (* 如果条件为0，直接删除循环 *)
       | _ ->
         let const_env = remove_const const_env stmt in
         let sc = simplify_expr const_env cond in
-        let (new_body, _) = optimize_stmt (pack_block body, enter_stack const_env) in
+        let (new_body, _) = optimize_stmt (body, enter_stack const_env) in
         (SWhile (sc, new_body), const_env)
       )
   | SBlock stmts ->
@@ -329,8 +338,8 @@ let rec optimize_stmt (stmt, const_env) =
       let new_stmts_rev = List.rev new_stmts in
       let final_stmt = match new_stmts_rev with
                        | [] -> SEmpty
-                       | [SDeclare (_, _)] -> SEmpty
-                       | [s] -> s
+                       (*| [SDeclare (_, _)] -> SEmpty
+                       | [s] -> s*)
                        | _ -> SBlock new_stmts_rev
       in
       (final_stmt, exit_stack new_env)
@@ -409,7 +418,7 @@ let unroll_loops (stmt, env_stack) = (* 参数改为env_stack *)
           while !current_val <= max_val do
             (* 创建带新作用域的栈 *)
             let iter_stack = 
-              add_var env_stack loop_var !current_val 
+              add_var env_stack loop_var (Some !current_val) 
             in
             let (unrolled_iter_body, _) = 
               optimize_stmt (SBlock body, iter_stack)
