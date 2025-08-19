@@ -4,119 +4,104 @@ open Ast
 module VMap = Map.Make(String)
 module SSet = Set.Make(String)
 
-type env_stack = {
-  current: (int option) VMap.t;  (* 当前作用域 *)
-  parent: env_stack option (* 仅允许访问直接父级 *)
-}
+(* 常量环境，即一个嵌套的哈希表*)
+type const_env = int option VMap.t list
 
-let new_env_stack () =
-  { current = VMap.empty; parent = None }
-;;
+(* 创建一个新的作用域 *)
+let new_scope () = [VMap.empty]
 
-let enter_stack stack =
-  { current = VMap.empty; parent = Some stack } (* 进入新作用域，当前作用域为空 *)
-;;
+(* 推入作用域 *)
+let push_scope = function env -> VMap.empty :: env
 
-let exit_stack stack =
-  match stack.parent with
-  | Some parent -> parent (* 返回到父级作用域 *)
-  | None -> new_env_stack () (* 如果没有父级，则返回一个新的空栈 *)
-;;
+(* 弹出作用域 *)
+let pop_scope = function
+  | [] -> new_scope ()
+  | [_] -> new_scope ()
+  | _ :: rest -> rest
 
-let rec lookup_var stack name =
-  match stack with
-  | {current; parent} ->
-      match VMap.find_opt name current with
-      | Some v -> v
-      | None -> 
-          match parent with
-          | Some p -> lookup_var p name
-          | None -> None (* 严格作用域隔离 *)
-;;
+(* 查找变量在最近作用域中的值 *)
+let rec lookup_var name = function
+  | [] -> None
+  | scope :: rest ->
+      match VMap.find_opt name scope with
+      | Some v -> Some v
+      | None -> lookup_var name rest
 
-let add_var stack name value = 
-  { 
-    current = VMap.add name value stack.current; 
-    parent = stack.parent
-  }
-;;
+(* 在变量最近的定义处更新其值 *)
+let rec update_var name value = function
+  | [] -> []
+  | scope :: rest ->
+      if VMap.mem name scope then
+        (VMap.add name value scope) :: rest
+      else
+        scope :: (update_var name value rest)
 
-let rec update_var stack name value =
-  if VMap.mem name stack.current then 
-  { 
-    current = VMap.add name value stack.current; 
-    parent = stack.parent 
-  }
-  else
-    match stack.parent with
-    | Some parent -> { current = stack.current; parent = Some (update_var parent name value) }
-    | None -> stack (* 如果没有父级，则不更新 *)
-;;
+(* 在当前作用域声明新变量 *)
+let declare_var name value = function
+  | [] -> [VMap.singleton name value]
+  | scope :: rest ->
+      (VMap.add name value scope) :: rest
 
-let rec remove_var_through stack name = 
-  let new_cur = VMap.add name None stack.current in
-  let new_parent = 
-    match stack.parent with
-    | Some p -> Some (remove_var_through p name)
-    | None -> None
+(* 合并两个环境，将不确定的变量标记为非常量 *)
+let rec merge_envs env1 env2 =
+  match env1, env2 with
+  | [], _ -> env2
+  | _, [] -> env1
+  | scope1 :: rest1, scope2 :: rest2 ->
+      let merged_scope = 
+        VMap.merge (fun _ v1 v2 ->
+          match v1, v2 with
+          | Some (Some n1), Some (Some n2) when n1 = n2 -> Some (Some n1)
+          | Some _, Some _ -> Some None  (* 不同的值或其中之一不确定 *)
+          | Some v, None -> Some v
+          | None, Some v -> Some v
+          | None, None -> None
+        ) scope1 scope2
+      in
+      merged_scope :: (merge_envs rest1 rest2)
+
+(* 标记变量为非常量 *)
+let mark_non_constant name env =
+  let rec mark_in_scopes = function
+    | [] -> []
+    | scope :: rest ->
+        if VMap.mem name scope then
+          (VMap.add name None scope) :: rest
+        else
+          scope :: (mark_in_scopes rest)
   in
-  { current = new_cur; parent = new_parent }
-;;
+  mark_in_scopes env
 
-let rec merge_stacks stack1 stack2 =
-  let merge_vmap st1 st2 = VMap.merge (fun _ v1 v2 ->
-      match v1, v2 with
-      | Some (Some n), Some (Some m) -> Some ((if n = m then Some(n) else None))
-      | Some (Some _), Some (None) 
-      | Some (None), Some (Some _)
-      | Some (None), Some (None) -> Some (None)
-      | _ ->
-        (*Printf.printf "Warning: Merging varible has unknown value\n"; *)
-        None
-  ) st1 st2 in
-
-  let merged_current = merge_vmap stack1.current stack2.current in
-  let merged_parent = 
-    match stack1.parent, stack2.parent with
-    | Some p1, Some p2 -> Some (merge_stacks p1 p2)
-    | Some p, None -> Some p
-    | None, Some p -> Some p
-    | None, None -> None
+(* 判断表达式是否有副作用（不纯）*)
+let expr_has_side_effects e =
+  let rec check = function
+   | ECall _ -> true (* 函数调用视为有副作用 *)
+   | EUnop (_, e1) -> check e1
+   | EBinop (_, e1, e2) -> check e1 || check e2
+   | EVar _ | EInt _ -> false (* 变量读取和常量无副作用 *)
   in
-  { current = merged_current; parent = merged_parent }
-;;
+  check e
 
-let rec remove_const stack stmt = 
-  match stmt with
-  | SAssign (name, _) ->
-      remove_var_through stack name
-  | SDeclare (name, _) ->
-      remove_var_through stack name
-  | SBlock stmts ->
-      List.fold_left remove_const stack stmts
-  | SIf (_, then_s, else_s_opt) ->
-      let stack = remove_const stack then_s in
-      (match else_s_opt with
-      | Some else_s -> remove_const stack else_s
-      | None -> stack)
-  | SWhile (_, body) ->
-      remove_const stack body
-  | _ -> stack
-;;
-
-(*
-let print_stack stack =
-  let rec string_of_stack st =
-    match st with
-    | {current; parent} -> 
-      let cur_str = String.concat ", " (VMap.bindings current 
-      |> List.map (fun (k, v) -> k ^ ": " ^ string_of_int v)) in
-      match parent with
-      | Some p -> cur_str ^ " | " ^ string_of_stack p
-      | None -> cur_str
+(* 找出循环体中修改的变量，并在外部环境中标记为非常量 *)
+let mark_modified_vars stmt env =
+  let rec collect_vars s =
+    match s with
+    | SEmpty | SBreak | SContinue -> []
+    | SExpr e -> if expr_has_side_effects e then [] else []
+    | SReturn (Some e) -> if expr_has_side_effects e then [] else []
+    | SReturn None -> []
+    | SDeclare (name, _) -> [name]
+    | SAssign (name, _) -> [name]
+    | SIf (_, then_s, else_opt) ->
+        let vars_then = collect_vars then_s in
+        let vars_else = match else_opt with Some s -> collect_vars s | None -> [] in
+        vars_then @ vars_else
+    | SWhile (_, body) -> collect_vars body
+    | SBlock stmts -> List.flatten (List.map collect_vars stmts)
   in
-  Printf.printf "Current scope: %s\n" (string_of_stack stack);
-;;*)
+  let modified_vars = collect_vars stmt in
+  List.fold_left (fun acc name -> mark_non_constant name acc) env modified_vars
+;;
 
 let pack_block stmt =
   match stmt with
@@ -141,40 +126,28 @@ let eval_binop op n1 n2 =
   | And -> if (n1 <> 0 && n2 <> 0) then 1 else 0
   | Or  -> if (n1 <> 0 || n2 <> 0) then 1 else 0
 
-(* 判断表达式是否有副作用（不纯）*)
-let expr_has_side_effects e =
-  let rec check = function
-   | ECall _ -> true (* 函数调用视为有副作用 *)
-   | EUnop (_, e1) -> check e1
-   | EBinop (_, e1, e2) -> check e1 || check e2
-   | EVar _ | EInt _ -> false (* 变量读取和常量无副作用 *)
-  in
-  check e
-
 (* 简化表达式 *)
-let rec simplify_expr stack_env expr =
-  match expr with
+(* 
+  不知道为什么如果真的执行常量传播优化，那么性能测试P1将会不通过 
+  尝试排查了部分env，但是还是找不到错误在哪里 
+  又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
+*)
+let rec simplify_expr env = function
   | EInt _ as c -> c
   | EVar name -> 
-    (* 
-    不知道为什么如果真的执行此优化，那么性能测试P1将会不通过 
-    尝试排查了部分env，但是还是找不到错误在哪里 
-    又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
-    *)
-    (match lookup_var stack_env name with
-      (*| Some n -> EInt n*)
-      | _ -> EVar name
-    )
+    (match lookup_var name env with
+      | Some (Some value) -> EInt value
+      | _ -> EVar name)
   | EUnop (op, e) ->
-      let se = simplify_expr stack_env e in
+      let se = simplify_expr env e in
       (match op, se with
        | Plus, _ -> se
        | Neg, EInt n -> EInt (-n)
        | Not, EInt n -> EInt (if n = 0 then 1 else 0)
        | _, _ -> EUnop (op, se))
   | EBinop (op, e1, e2) ->
-      let se1 = simplify_expr stack_env e1 in
-      let se2 = simplify_expr stack_env e2 in
+      let se1 = simplify_expr env e1 in
+      let se2 = simplify_expr env e2 in
       (match se1, se2 with
        | EInt n1, EInt n2 -> 
            (* 常量折叠 *)
@@ -257,7 +230,7 @@ let rec simplify_expr stack_env expr =
                  | EInt n1, EInt n2 -> EInt (if n1 <> 0 || n2 <> 0 then 1 else 0) (* 常量折叠 *)
                  | _, _ -> EBinop (Or, se1, se2))))
   | ECall (name, args) ->
-      let sargs = List.map (simplify_expr stack_env) args in
+      let sargs = List.map (simplify_expr env) args in
       ECall (name, sargs)
 
 (* 优化语句 *)
@@ -266,7 +239,8 @@ let rec optimize_stmt (stmt, const_env) =
   | SEmpty -> (SEmpty, const_env)
   | SExpr e ->
       let se = simplify_expr const_env e in
-      if not (expr_has_side_effects se) then (SEmpty, const_env) else (SExpr se, const_env)
+      if not (expr_has_side_effects se) 
+        then (SEmpty, const_env) else (SExpr se, const_env)
   | SReturn None -> (SReturn None, const_env)
   | SReturn (Some e) -> 
     (SReturn (Some (simplify_expr const_env e)), const_env)
@@ -276,7 +250,7 @@ let rec optimize_stmt (stmt, const_env) =
       | EInt n -> Some n
       | _ -> None
     in
-    let new_env = add_var const_env name const_value in
+    let new_env = declare_var name const_value const_env in
     (SDeclare (name, se), new_env)
   | SAssign (name, expr) ->
     let se = simplify_expr const_env expr in
@@ -284,7 +258,7 @@ let rec optimize_stmt (stmt, const_env) =
       | EInt n -> Some n
       | _ -> None
     in
-    let new_env = update_var const_env name const_value in
+    let new_env = update_var name const_value const_env in
     (SAssign (name, se), new_env)
   | SIf (cond, then_s, else_opt) ->
       let then_s = pack_block then_s in
@@ -292,25 +266,25 @@ let rec optimize_stmt (stmt, const_env) =
       let sc = simplify_expr const_env cond in(
       match sc with
         | EInt n when n <> 0 ->
-          let stmt, stack = optimize_stmt (then_s, const_env) in
-          (stmt, stack)
+          let stmt, stack = optimize_stmt (then_s, push_scope const_env) in
+          (stmt, pop_scope stack)
         | EInt n when n = 0 ->(
           match else_opt with 
             | Some s -> 
-              let stmt, stack = optimize_stmt (s, const_env) in
-              (stmt, stack)
+              let stmt, stack = optimize_stmt (s,push_scope const_env) in
+              (stmt,pop_scope stack)
             | None -> (SEmpty, const_env)
           )
         | _ ->
-           let (st, st1) = optimize_stmt (then_s, const_env) in
-           let (se_opt, st2) = 
+          let(them_stmt, env_1) = optimize_stmt (then_s,push_scope const_env) in
+          let(else_stmt_opt, env_2) = 
             match else_opt with
-              | Some s -> let (os, oe) = 
-              optimize_stmt (s, const_env) in (Some os, oe)
-              | None -> (None, const_env)
-           in
-           let const_env = merge_stacks st1 st2 in
-           (SIf (sc, st, se_opt), const_env)
+              | Some s -> let (os, oe) = optimize_stmt (s,push_scope const_env) in 
+              (Some os, oe)
+              | None -> (None,push_scope const_env)
+          in
+          let const_env = merge_envs (pop_scope env_1) (pop_scope env_2) in
+          (SIf (sc, them_stmt, else_stmt_opt), const_env)
       )
   | SWhile (cond, body) ->
       let body = pack_block body in
@@ -318,10 +292,11 @@ let rec optimize_stmt (stmt, const_env) =
       match try_cond with
       | EInt 0 -> (SEmpty, const_env) (* 如果条件为0，直接删除循环 *)
       | _ ->
-        let const_env = remove_const const_env stmt in
+        let const_env = mark_modified_vars stmt const_env in
         let sc = simplify_expr const_env cond in
-        let (new_body, _) = optimize_stmt (body, enter_stack const_env) in
-        (SWhile (sc, new_body), const_env)
+        let (new_body, new_env) = optimize_stmt (body, push_scope const_env) in
+        let final_env = mark_modified_vars new_body new_env in
+        (SWhile (sc, new_body), final_env)
       )
   | SBlock stmts ->
       let (new_stmts, new_env) =
@@ -333,16 +308,15 @@ let rec optimize_stmt (stmt, const_env) =
             | SReturn _ -> (os :: acc_stmts, next_env) (* Stop processing after return *)
             | _ -> (os :: acc_stmts, next_env)
           )
-          ([], enter_stack const_env) stmts
+          ([], push_scope const_env) stmts
       in
       let new_stmts_rev = List.rev new_stmts in
       let final_stmt = match new_stmts_rev with
                        | [] -> SEmpty
                        | [SDeclare (_, _)] -> SEmpty
-                       | [s] -> s
                        | _ -> SBlock new_stmts_rev
       in
-      (final_stmt, exit_stack new_env)
+      (final_stmt, pop_scope new_env)
   | SBreak | SContinue as s -> (s, const_env)
 ;;
 
@@ -408,8 +382,8 @@ let unroll_loops (stmt, env_stack) = (* 参数改为env_stack *)
     match s with
     | SWhile (EBinop(Le, EVar loop_var, EInt max_val), SBlock body) ->
         let start_val = 
-          match lookup_var env_stack loop_var with
-          | Some n when n > 0 && n <= max_val -> n
+          match lookup_var loop_var env_stack  with
+          | Some (Some n) when n > 0 && n <= max_val -> n
           | _ -> -1 (* 无法展开 *)
         in
         if start_val > 0 then
@@ -418,7 +392,7 @@ let unroll_loops (stmt, env_stack) = (* 参数改为env_stack *)
           while !current_val <= max_val do
             (* 创建带新作用域的栈 *)
             let iter_stack = 
-              add_var env_stack loop_var (Some !current_val) 
+              declare_var loop_var (Some !current_val) env_stack
             in
             let (unrolled_iter_body, _) = 
               optimize_stmt (SBlock body, iter_stack)
@@ -553,7 +527,7 @@ let inline_pass (Program funcs) =
     match stmt with
     | SAssign (v, ECall (name, args)) when Hashtbl.mem non_recursive_funcs name ->
         let func_to_inline = Hashtbl.find func_map name in
-        let simplified_args = List.map (simplify_expr (new_env_stack ()) ) args in
+        let simplified_args = List.map (simplify_expr (new_scope ()) ) args in
         perform_inlining v func_to_inline simplified_args
     | SIf (c, ts, es) -> SIf(c, inline_stmt_pass ts, Option.map inline_stmt_pass es)
     | SWhile (c, b) -> SWhile(c, inline_stmt_pass b)
@@ -568,13 +542,13 @@ let inline_pass (Program funcs) =
 (* 优化函数 *)
 let optimize_func (f: func_def) : func_def =
   (*print_endline ("Optimizing function: " ^ f.name);*)
-  let (body1, env1) = optimize_stmt (f.body, new_env_stack () )  in
+  let (body1, env1) = optimize_stmt (f.body, new_scope () )  in
   let body2 = unroll_loops (body1, env1) in
   
   (*print_endline (string_of_stmt "" body2);
   print_endline "-- end of phase 1 --\n";*)
   
-  let (body3, _) = optimize_stmt (body2, new_env_stack () ) in
+  let (body3, _) = optimize_stmt (body2, new_scope () ) in
   (* 去除死代码的时候感觉也得考虑一下作用域的问题啊…… *)
   (* 先删掉这个*)
   let body4 = body3 in

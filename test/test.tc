@@ -1,29 +1,118 @@
 int echo(int x){
-    return x * 100;
+    return x;
 }
 
-int testRet(){
-    int x = 20;
+int test0_1(){
+    int x = 3;
     {
-        int x = echo(30);
+        int x = 4;
+        x = x + 1;
     }
     return x;
 }
 
-int testRet2(){
-    int x = echo(20);
+int test0_2(){
+    int x = 5;
+    int y = 10;
     {
-        int x = 30;
+        int y = 3;
+        x = x + y;
+    }
+    return x + y;
+}
+
+int test0_3(){
+    int x = echo(10);
+    {
+        int x = 20;
     }
     return x;
 }
 
-int main(){
-    // testing about constant folding and so
+int test0_4(){
+    int x = 10;
+    {
+        int x = echo(20);
+    }
+    return x;
+}
+
+int test1_1(){
+    int ans = 120;
+    if(echo(114)){
+        ans = -ans;
+    }
+    return ans;
+}
+
+int test1_2(){
+    int ans = 0;
+    if(echo(114)){
+        ans = 114;
+    }
+    else{
+        ans = 514;
+    }
+    return ans;
+}
+
+int test1_3(){
+    int ans0 = 0;
+    int ans1 = 1;
+    int ans2 = 2;
+    int ans3 = 3;
+    if(echo(114)){
+        ans1 = 114;
+        ans3 = 514;
+    }
+    else if(echo(514)){
+        ans1 = 514;
+        ans2 = 114;
+    }
+    else{
+        ans3 = 114;
+        ans2 = 514;
+    }
+    return ans0 + ans1 + ans2 + ans3;
+}
+
+int test1_4_1(){
     int x = echo(20);
     if(1)
         int x = 50;
     
+    return x;
+}
 
-    return x; // ?
+int test1_4_2(){
+    int x = 20;
+    if(1)
+        int x = echo(50);
+    
+    return x;
+}
+
+int test1_4_3(){
+    int x = 10;
+    if(0)
+        int x = echo(20);
+    else
+        int x = echo(30);
+    
+    return x;
+}
+
+int test2_1(){
+    int x = 10;
+    int ans = 0;
+    while(x > 0){
+        x = x-1;
+        ans = ans + x;
+    }
+    return ans;
+}
+
+
+int main(){
+    return 0;
 }
