@@ -1,5 +1,5 @@
 open Ast
-open String_of_ast
+(*open String_of_ast*)
 
 module VMap = Map.Make(String)
 module SSet = Set.Make(String)
@@ -558,20 +558,20 @@ let inline_pass (Program funcs) =
 
 (* 优化函数 *)
 let optimize_func (f: func_def) : func_def =
-  print_endline ("Optimizing function: " ^ f.name);
+  (*print_endline ("Optimizing function: " ^ f.name);*)
   let (body1, env1) = optimize_stmt (f.body, new_env_stack () )  in
   let body2 = unroll_loops (body1, env1) in
   
-  print_endline (string_of_stmt "" body2);
-  print_endline "-- end of phase 1 --\n";
+  (*print_endline (string_of_stmt "" body2);
+  print_endline "-- end of phase 1 --\n";*)
   
   let (body3, _) = optimize_stmt (body2, new_env_stack () ) in
   (* 去除死代码的时候感觉也得考虑一下作用域的问题啊…… *)
   (* 先删掉这个*)
   let body4 = body3 in
   
-  print_endline (string_of_stmt "" body4);
-  print_endline "-- end of phase 2 --\n";
+  (*print_endline (string_of_stmt "" body4);
+  print_endline "-- end of phase 2 --\n";*)
 
   { f with body = body4 }
 
