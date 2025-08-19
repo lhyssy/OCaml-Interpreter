@@ -338,8 +338,8 @@ let rec optimize_stmt (stmt, const_env) =
       let new_stmts_rev = List.rev new_stmts in
       let final_stmt = match new_stmts_rev with
                        | [] -> SEmpty
-                       (*| [SDeclare (_, _)] -> SEmpty
-                       | [s] -> s*)
+                       | [SDeclare (_, _)] -> SEmpty
+                       | [s] -> s
                        | _ -> SBlock new_stmts_rev
       in
       (final_stmt, exit_stack new_env)
