@@ -162,7 +162,7 @@ let rec simplify_expr stack_env expr =
     又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
     *)
     (match lookup_var stack_env name with
-      | Some n -> EInt n
+      (*| Some n -> EInt n*)
       | _ -> EVar name
     )
   | EUnop (op, e) ->
