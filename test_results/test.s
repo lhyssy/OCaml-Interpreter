@@ -4,8 +4,6 @@ echo:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, a0, 0
-	addi a0, t0, 0
 	jal x0, echo_return
 echo_return:
 	lw s0, 12(sp)

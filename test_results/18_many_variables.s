@@ -4,14 +4,12 @@ abs:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, a0, 0
-	bge t0, zero, else_0
-	addi t1, x0, 0
-	sub t1, t1, t0
-	addi a0, t1, 0
+	bge a0, zero, else_0
+	addi t0, x0, 0
+	sub t0, t0, a0
+	addi a0, t0, 0
 	jal x0, abs_return
 else_0:
-	addi a0, t0, 0
 	jal x0, abs_return
 abs_return:
 	lw s0, 12(sp)
@@ -22,8 +20,6 @@ echo:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, a0, 0
-	addi a0, t0, 0
 	jal x0, echo_return
 echo_return:
 	lw s0, 12(sp)

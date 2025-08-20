@@ -5,10 +5,7 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	addi t0, x0, 10
-	addi t1, x0, 5
-	div t0, t0, t1
-	addi a0, t0, 0
+	addi a0, x0, 2
 	jal x0, main_return
 main_return:
 	lw ra, 12(sp)

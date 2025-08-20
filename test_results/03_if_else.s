@@ -5,15 +5,7 @@ main:
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	addi t0, x0, 3
-	addi t1, x0, 2
-	bge t1, t0, else_0
-	addi t0, t0, 1
-	jal x0, endif_1
-else_0:
-	addi t0, t0, -1
-endif_1:
-	addi a0, t0, 0
+	addi a0, x0, 4
 	jal x0, main_return
 main_return:
 	lw ra, 12(sp)

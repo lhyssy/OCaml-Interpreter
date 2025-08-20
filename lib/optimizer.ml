@@ -331,6 +331,24 @@ let rec optimize_stmt (stmt, const_env) =
 
 (* 循环展开正式代码，输出展开是否成功，展开后的body和循环后的env *)
 and unroll_loops cond body env = 
+  (* 检测body内是否含有break和continue，若有，拒绝优化*)
+  let has_break_or_continue stmt =
+    let rec check s =
+      match s with
+      | SEmpty | SReturn _ -> false
+      | SBreak | SContinue -> true
+      | SExpr e -> expr_has_side_effects e
+      | SIf (_, then_s, else_opt) ->
+          (match else_opt with
+          | None -> check then_s
+          | Some else_s -> check then_s || check else_s)
+      | SWhile (_, body) -> check body
+      | SBlock stmts -> List.exists check stmts
+      | _ -> false
+    in
+    check stmt
+  in
+
   (* 将语句结合在一起的函数 *)
   let combine_stmt stmt1 stmt2 =
     match stmt1, stmt2 with
@@ -344,6 +362,8 @@ and unroll_loops cond body env =
   let rec unroll cond body env cur_cnt cur_stmt =
     if cur_cnt > loop_count_limit then
       (false, SEmpty, env) (* 超过限制，返回原始语句 *)
+    else if has_break_or_continue body then
+      (false, SEmpty, env) (* 循环体含有break或continue，拒绝展开 *)
     else
       let try_cond = simplify_expr env cond in(
       match try_cond with

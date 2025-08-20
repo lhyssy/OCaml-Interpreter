@@ -4,9 +4,7 @@ add:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, a0, 0
-	addi t1, a1, 0
-	add t0, t0, t1
+	add t0, a0, a1
 	addi a0, t0, 0
 	jal x0, add_return
 add_return:

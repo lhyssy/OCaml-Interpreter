@@ -4,8 +4,6 @@ print:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, x0, 1
-	addi t0, t0, 1
 print_return:
 	lw s0, 12(sp)
 	addi sp, sp, 16

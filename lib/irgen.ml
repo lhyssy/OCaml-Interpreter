@@ -92,7 +92,15 @@ let rec compile_expr env expr : vreg =
       emit env (IR_Li (rd, n));
       rd
   | EVar name ->
-      find_var env.var_env name
+      let found_vreg = find_var env.var_env name in
+      if found_vreg < 0 then
+        let param_vreg = fresh_vreg env in
+        let offset = -(found_vreg + 4) in
+        emit env (IR_Load_Callee_Stack_Arg (param_vreg, offset));
+        env.var_env <- add_var env.var_env name param_vreg;
+        param_vreg
+      else
+        found_vreg
   | ECall (func_name, args) ->
       let arg_vregs = List.map (compile_expr env) args in
       let rd = fresh_vreg env in
@@ -269,8 +277,18 @@ let rec compile_expr_vreg env expr dest_vreg =
   | EInt n -> 
     emit env (IR_Li (dest_vreg, n));
   | EVar name ->
-      let source_vreg = find_var env.var_env name in
-      emit env (IR_Mv (dest_vreg, source_vreg));
+    let found_vreg = find_var env.var_env name in
+    let source_vreg =
+      if found_vreg < 0 then
+        let param_vreg = fresh_vreg env in
+        let offset = -(found_vreg + 4) in
+        emit env (IR_Load_Callee_Stack_Arg (param_vreg, offset));
+        env.var_env <- add_var env.var_env name param_vreg;
+        param_vreg
+      else
+        found_vreg
+    in
+    emit env (IR_Mv (dest_vreg, source_vreg));
   | ECall (func_name, args) ->
       let args_size = List.length args in
       let args_rev = List.rev args in
@@ -602,41 +620,80 @@ and is_leaf_function_expr expr =
   | ECall _ -> false
 ;;
 
+(* 尾递归优化相关 *)
+let is_tail_call body =
+  match body with
+  | _ -> false
+;;
+
+(* 编译尾递归调用 *)
+let compile_stmt_tailcall env body =
+  match body with
+  | _ -> compile_stmt env body;
+;;
+
+
 (* 编译一个函数 *)
-let compile_func (func_def: func_def) return_label =
-  (*let is_leaf = is_leaf_function_body func_def.body in*)
+let compile_func (func_def: func_def) func_name is_leaf =
   let env = init_compile_env () in
+  let return_label = func_name ^ "_return" in
   env.current_func_return_label <- return_label;
 
-  (* TODO：如果这个函数是叶子函数，那么将所有的参数静态放置于对应位置
-     否则按原样进行*)
-
-  (* 处理参数: 将参数从物理寄存器/栈移动到新的虚拟寄存器 *)
+  (*  处理参数: 如果这个函数是叶子函数，那么将所有的参数静态放置于对应位置
+      否则，将参数从物理寄存器/栈移动到新的虚拟寄存器 *)
   let param_pregs = [1; 2; 3; 4; 5; 6; 7; 8] in (* vregs for a0-a7 *)
-  let rec process_params params param_idx =
-    match params with
-    | P name :: rest_params ->
-        let param_vreg = fresh_vreg env in
-        if param_idx < 8 then begin
-            (* 寄存器参数 *)
-            let preg_vreg = List.nth param_pregs param_idx in
-            emit env (IR_Mv (param_vreg, preg_vreg));
-        end else begin
-            (* 栈参数. 偏移量相对于 s0 (帧指针) *)
-            (* 第一个栈参数 (即第9个参数，param_idx = 8) 位于 s0 向上 0 字节处 *)
-            (* param_idx = 8 => offset = 0 *)
-            (* param_idx = 9 => offset = 4 *)
-            let offset_from_fp = (param_idx - 8) * 4 in
-            emit env (IR_Load_Callee_Stack_Arg (param_vreg, offset_from_fp));
-        end;
-        env.var_env <- add_var env.var_env name param_vreg;
-        process_params rest_params (param_idx + 1)
-    | [] -> ()
+  let rec process_params params param_idx is_leaf =
+    if is_leaf then begin
+      match params with
+      | P name :: rest_params ->
+          if param_idx < 8 then begin
+              (* 寄存器参数 *)
+              let preg_vreg = List.nth param_pregs param_idx in
+              env.var_env <- add_var env.var_env name preg_vreg;
+          end else begin
+              (* 栈参数. 偏移量相对于 s0 (帧指针) *)
+              (* 第一个栈参数 (即第9个参数，param_idx = 8) 位于 s0 向上 0 字节处 *)
+              (* 使用 - offset_from_fp - 4 加密 *)
+              let offset_from_fp = (param_idx - 8) * 4 in
+              let coded_vreg = -offset_from_fp - 4 in
+              env.var_env <- add_var env.var_env name coded_vreg;
+          end;
+          process_params rest_params (param_idx + 1) is_leaf
+      | [] -> ()
+    end 
+    else begin
+      match params with
+      | P name :: rest_params ->
+          let param_vreg = fresh_vreg env in
+          if param_idx < 8 then begin
+              (* 寄存器参数 *)
+              let preg_vreg = List.nth param_pregs param_idx in
+              emit env (IR_Mv (param_vreg, preg_vreg));
+              env.var_env <- add_var env.var_env name param_vreg;
+          end else begin
+              (* 栈参数. 偏移量相对于 s0 (帧指针) *)
+              (* 第一个栈参数 (即第9个参数，param_idx = 8) 位于 s0 向上 0 字节处 *)
+              (* param_idx = 8 => offset = 0 *)
+              (* param_idx = 9 => offset = 4 *)
+              let offset_from_fp = (param_idx - 8) * 4 in
+              emit env (IR_Load_Callee_Stack_Arg (param_vreg, offset_from_fp));
+              env.var_env <- add_var env.var_env name param_vreg;
+          end;
+
+          process_params rest_params (param_idx + 1) is_leaf
+      | [] -> ()
+    end
   in
-  process_params func_def.params 0;
+  process_params func_def.params 0 is_leaf;
 
   (* 编译函数体 *)
-  compile_stmt env func_def.body;
+  let is_tail_call = is_tail_call func_def.body in
+  if is_tail_call then begin
+    emit env (IR_Label (func_name ^ "_tailcall"));
+    compile_stmt_tailcall env func_def.body;
+  end
+  else 
+    compile_stmt env func_def.body;
 
   (List.rev env.instructions, env)
 ;;
@@ -676,16 +733,17 @@ let rec run_peephole_to_fixed_point instrs =
 
 (* --- 将源代码生成为IR形式 --- *)
 let gen_ir_func (func: func_def) = 
-  let return_label = func.name ^ "_return" in
-  let (instrs, _) = compile_func func return_label in
+  let is_leaf = func.name <> "main" && (is_leaf_function_body func.body) in
+
+  let (instrs, _) = compile_func func func.name is_leaf in
   let instrs = run_peephole_to_fixed_point instrs in
   {
     return_type = func.return_type;
-    return_label = return_label;
+    return_label = func.name ^ "_return";
     name = func.name;
     params = func.params;
     body = instrs;
-    is_leaf = func.name <> "main" && (is_leaf_function_body func.body);
+    is_leaf = is_leaf;
   }
 ;;
 
