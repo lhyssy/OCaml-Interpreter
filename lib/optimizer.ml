@@ -133,15 +133,12 @@ let eval_binop op n1 n2 =
   又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
 *)
 
-(* 循环最大展开次数，若超过，则取消循环展开优化 *)
-let loop_count_limit = 16
-
 (* 表达式优化（含常量折叠与展开）*)
 let rec simplify_expr env = function
   | EInt _ as c -> c
   | EVar name -> 
     (match lookup_var name env with
-      | Some (Some value) -> EInt value
+      (*| Some (Some value) -> EInt value*)
       | _ -> EVar name)
   | EUnop (op, e) ->
       let se = simplify_expr env e in
@@ -297,16 +294,11 @@ let rec optimize_stmt (stmt, const_env) =
       match try_cond with
       | EInt 0 -> (SEmpty, const_env) (* 如果条件为0，直接删除循环 *)
       | _ ->
-        let (unrolled, new_body, new_env) = unroll_loops cond body const_env in
-        if unrolled then
-          (new_body, new_env) (* 如果循环展开成功，返回展开后的body和环境 *)
-        else
-          (* 否则继续优化循环体 *)
-          let const_env = mark_modified_vars stmt const_env in
-          let sc = simplify_expr const_env cond in
-          let (new_body, new_env) = optimize_stmt (body, push_scope const_env) in
-          let final_env = mark_modified_vars new_body new_env in
-          (SWhile (sc, new_body), final_env)
+        let const_env = mark_modified_vars stmt const_env in
+        let sc = simplify_expr const_env cond in
+        let (new_body, new_env) = optimize_stmt (body, push_scope const_env) in
+        let final_env = mark_modified_vars new_body new_env in
+        (SWhile (sc, new_body), final_env)
       )
   | SBlock stmts ->
       let (new_stmts, new_env) =
@@ -329,56 +321,7 @@ let rec optimize_stmt (stmt, const_env) =
       (final_stmt, pop_scope new_env)
   | SBreak | SContinue as s -> (s, const_env)
 
-(* 循环展开正式代码，输出展开是否成功，展开后的body和循环后的env *)
-and unroll_loops cond body env = 
-  (* 检测body内是否含有break和continue，若有，拒绝优化*)
-  let has_break_or_continue stmt =
-    let rec check s =
-      match s with
-      | SEmpty | SReturn _ -> false
-      | SBreak | SContinue -> true
-      | SExpr e -> expr_has_side_effects e
-      | SIf (_, then_s, else_opt) ->
-          (match else_opt with
-          | None -> check then_s
-          | Some else_s -> check then_s || check else_s)
-      | SWhile (_, body) -> check body
-      | SBlock stmts -> List.exists check stmts
-      | _ -> false
-    in
-    check stmt
-  in
 
-  (* 将语句结合在一起的函数 *)
-  let combine_stmt stmt1 stmt2 =
-    match stmt1, stmt2 with
-    | SBlock st1, SBlock st2 -> SBlock (st1 @ st2)
-    | SBlock st1, _ -> SBlock (st1 @ [stmt2])
-    | _, SBlock st2 -> SBlock ([stmt1] @ st2)
-    | _ -> SBlock [stmt1; stmt2]
-  in
-
-  (* 递归展开循环 *)
-  let rec unroll cond body env cur_cnt cur_stmt =
-    if cur_cnt > loop_count_limit then
-      (false, SEmpty, env) (* 超过限制，返回原始语句 *)
-    else if has_break_or_continue body then
-      (false, SEmpty, env) (* 循环体含有break或continue，拒绝展开 *)
-    else
-      let try_cond = simplify_expr env cond in(
-      match try_cond with
-      | EInt 0 -> 
-        (true, cur_stmt, env) (* 条件为0，循环结束，输出 *)
-      | EInt n when n <> 0 ->
-        let new_body, new_env = optimize_stmt (body, env) in
-        let new_stmt = combine_stmt cur_stmt new_body in
-        unroll cond body new_env (cur_cnt + 1) new_stmt (* 递归展开 *)
-      | _ ->
-        (false, SEmpty, env) (* 无法得知是否继续，返回原始语句 *)
-      )
-  in
-
-  unroll cond body env 0 SEmpty
 
 (* --- 死代码消除 --- *)
 (* 从表达式中收集被使用的变量 *)
@@ -436,7 +379,165 @@ let dce_pass stmt =
   let used_vars = collect_reads_stmt stmt in
   dce_stmt used_vars stmt
 
-(* --- Function Inlining --- *)
+(* --- 循环展开 --- *)
+(* 循环最大展开次数，若超过，则取消循环展开优化 *)
+let loop_count_limit = 16
+
+let rec compile_expr2 env = function
+  | EInt _ as c -> c
+  | EVar name -> 
+    (match lookup_var name env with
+      | Some (Some value) -> EInt value
+      | _ -> EVar name)
+  | EUnop (op, e) ->
+      let se = compile_expr2 env e in
+      (match op, se with
+       | Plus, _ -> se
+       | Neg, EInt n -> EInt (-n)
+       | Not, EInt n -> EInt (if n = 0 then 1 else 0)
+       | _, _ -> EUnop (op, se))
+  | EBinop (op, e1, e2) ->
+      let se1 = compile_expr2 env e1 in
+      let se2 = compile_expr2 env e2 in
+      (match se1, se2 with
+       | EInt n1, EInt n2 -> 
+           (* 常量折叠 *)
+           (try EInt (eval_binop op n1 n2)
+            with _ -> EBinop (op, se1, se2))
+       | _, _ -> EBinop (op, e1, e2)
+       )
+  | ECall (name, args) ->
+      let sargs = List.map (compile_expr2 env) args in
+      ECall (name, sargs)
+
+let rec unroll_loops_stmt (stmt, const_env) = 
+  match stmt with
+  | SDeclare (name, e) ->
+    let se = compile_expr2 const_env e in
+    let const_value = match se with
+      | EInt n -> Some n
+      | _ -> None
+    in
+    let new_env = declare_var name const_value const_env in
+    (stmt, new_env)
+  | SAssign (name, expr) ->
+    let se = compile_expr2 const_env expr in
+    let const_value = match se with
+      | EInt n -> Some n
+      | _ -> None
+    in
+    let new_env = update_var name const_value const_env in
+    (stmt, new_env)
+  | SIf (cond, then_s, else_opt) ->
+      let sc = compile_expr2 const_env cond in(
+      match sc with
+        | EInt n when n <> 0 ->
+          let _, stack = unroll_loops_stmt (then_s, push_scope const_env) in
+          (stmt, pop_scope stack)
+        | EInt n when n = 0 ->(
+          match else_opt with 
+            | Some s -> 
+              let _, stack = unroll_loops_stmt (s,push_scope const_env) in
+              (stmt,pop_scope stack)
+            | None -> (SEmpty, const_env)
+          )
+        | _ ->
+          let(_, env_1) = unroll_loops_stmt (then_s,push_scope const_env) in
+          let(_, env_2) = 
+            match else_opt with
+              | Some s -> let (os, oe) = unroll_loops_stmt (s,push_scope const_env) in 
+              (Some os, oe)
+              | None -> (None,push_scope const_env)
+          in
+          let const_env = merge_envs (pop_scope env_1) (pop_scope env_2) in
+          (stmt, const_env)
+      )
+  | SWhile (cond, body) ->
+    let (unrolled, new_body, new_env) = unroll_loops cond body const_env in
+    if unrolled then
+      (new_body, new_env) (* 如果循环展开成功，返回展开后的body和环境 *)
+    else
+      (* 否则继续优化循环体 *)
+      let const_env = mark_modified_vars stmt const_env in
+      let sc = compile_expr2 const_env cond in
+      let (new_body, new_env) = unroll_loops_stmt (body, push_scope const_env) in
+      let final_env = mark_modified_vars new_body new_env in
+      (SWhile (sc, new_body), final_env)
+  | SBlock stmts ->
+      let (new_stmts, new_env) =
+        List.fold_left
+          (fun (acc_stmts, current_env) s ->
+            let (os, next_env) = unroll_loops_stmt (s, current_env) in
+            match os with
+            | SEmpty -> (acc_stmts, next_env)
+            | SReturn _ -> (os :: acc_stmts, next_env) (* Stop processing after return *)
+            | _ -> (os :: acc_stmts, next_env)
+          )
+          ([], push_scope const_env) stmts
+      in
+      let new_stmts_rev = List.rev new_stmts in
+      let final_stmt = match new_stmts_rev with
+                       | [] -> SEmpty
+                       | [SDeclare (_, _)] -> SEmpty
+                       | _ -> SBlock new_stmts_rev
+      in
+      (final_stmt, pop_scope new_env)
+  | _ -> stmt, const_env
+
+(* 循环展开代码，输出展开是否成功，展开后的body和循环后的env *)
+and unroll_loops cond body env = 
+  (* 检测body内是否含有break和continue，若有，拒绝优化*)
+  let has_break_or_continue stmt =
+    let rec check s =
+      match s with
+      | SEmpty | SReturn _ -> false
+      | SBreak | SContinue -> true
+      | SExpr e -> expr_has_side_effects e
+      | SIf (_, then_s, else_opt) ->
+          (match else_opt with
+          | None -> check then_s
+          | Some else_s -> check then_s || check else_s)
+      | SWhile (_, body) -> check body
+      | SBlock stmts -> List.exists check stmts
+      | _ -> false
+    in
+    check stmt
+  in
+
+  (* 将语句结合在一起的函数 *)
+  let combine_stmt stmt1 stmt2 =
+    match stmt1, stmt2 with
+    | SBlock st1, SBlock st2 -> SBlock (st1 @ st2)
+    | SBlock st1, _ -> SBlock (st1 @ [stmt2])
+    | _, SBlock st2 -> SBlock ([stmt1] @ st2)
+    | _ -> SBlock [stmt1; stmt2]
+  in
+
+  (* 递归展开循环 *)
+  let rec unroll cond body env cur_cnt cur_stmt =
+    if cur_cnt > loop_count_limit then
+      (false, SEmpty, env) (* 超过限制，返回原始语句 *)
+    else if has_break_or_continue body then
+      (false, SEmpty, env) (* 循环体含有break或continue，拒绝展开 *)
+    else begin
+      (* 尝试展开循环 *)
+      let try_cond = compile_expr2 env cond in(
+      match try_cond with
+      | EInt 0 -> 
+        (true, cur_stmt, env) (* 条件为0，循环结束，输出 *)
+      | EInt n when n <> 0 ->
+        let new_body, new_env = unroll_loops_stmt (body, env) in
+        let new_stmt = combine_stmt cur_stmt new_body in
+        unroll cond body new_env (cur_cnt + 1) new_stmt (* 递归展开 *)
+      | _ ->
+        (false, SEmpty, env) (* 无法得知是否继续，返回原始语句 *)
+      )
+    end
+  in
+
+  unroll cond body env 0 SEmpty
+
+(* --- 函数内联 --- *)
 
 (* A simple counter for generating unique variable names during inlining. *)
 let unique_id = ref 0
@@ -568,15 +669,16 @@ let inline_pass (Program funcs) =
 
 (* 优化函数 *)
 let optimize_func (f: func_def) : func_def =
-  let (body1, _) = optimize_stmt (f.body, new_scope () )  in
-  let body2 = dce_pass body1 in
+  let (body1, _) = optimize_stmt (f.body, new_scope ()) in
+  let (body2, _) = unroll_loops_stmt (body1, new_scope ()) in
+  let body3 = dce_pass body2 in
 
-  (*
-  print_endline ("Optimizing function: " ^ f.name);
-  print_endline (string_of_stmt "" body2);
+  
+  (*print_endline ("Optimizing function: " ^ f.name);
+  print_endline (string_of_stmt "" body3);
   print_endline "";*)
 
-  { f with body = body2 }
+  { f with body = body3 }
 
 let optimize_program (Program funcs) =
   let rec run_to_fixed_point p =
