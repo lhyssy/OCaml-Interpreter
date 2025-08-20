@@ -132,6 +132,11 @@ let eval_binop op n1 n2 =
   尝试排查了部分env，但是还是找不到错误在哪里 
   又没有测试用例做例子，我是真的不知道怎么优化了，抱歉
 *)
+
+(* 循环最大展开次数，若超过，则取消循环展开优化 *)
+let loop_count_limit = 16
+
+(* 表达式优化（含常量折叠与展开）*)
 let rec simplify_expr env = function
   | EInt _ as c -> c
   | EVar name -> 
@@ -292,11 +297,16 @@ let rec optimize_stmt (stmt, const_env) =
       match try_cond with
       | EInt 0 -> (SEmpty, const_env) (* 如果条件为0，直接删除循环 *)
       | _ ->
-        let const_env = mark_modified_vars stmt const_env in
-        let sc = simplify_expr const_env cond in
-        let (new_body, new_env) = optimize_stmt (body, push_scope const_env) in
-        let final_env = mark_modified_vars new_body new_env in
-        (SWhile (sc, new_body), final_env)
+        let (unrolled, new_body, new_env) = unroll_loops cond body const_env in
+        if unrolled then
+          (new_body, new_env) (* 如果循环展开成功，返回展开后的body和环境 *)
+        else
+          (* 否则继续优化循环体 *)
+          let const_env = mark_modified_vars stmt const_env in
+          let sc = simplify_expr const_env cond in
+          let (new_body, new_env) = optimize_stmt (body, push_scope const_env) in
+          let final_env = mark_modified_vars new_body new_env in
+          (SWhile (sc, new_body), final_env)
       )
   | SBlock stmts ->
       let (new_stmts, new_env) =
@@ -318,11 +328,40 @@ let rec optimize_stmt (stmt, const_env) =
       in
       (final_stmt, pop_scope new_env)
   | SBreak | SContinue as s -> (s, const_env)
-;;
 
-(* --- Dead Code Elimination --- *)
+(* 循环展开正式代码，输出展开是否成功，展开后的body和循环后的env *)
+and unroll_loops cond body env = 
+  (* 将语句结合在一起的函数 *)
+  let combine_stmt stmt1 stmt2 =
+    match stmt1, stmt2 with
+    | SBlock st1, SBlock st2 -> SBlock (st1 @ st2)
+    | SBlock st1, _ -> SBlock (st1 @ [stmt2])
+    | _, SBlock st2 -> SBlock ([stmt1] @ st2)
+    | _ -> SBlock [stmt1; stmt2]
+  in
 
-(* Collect variables read in an expression *)
+  (* 递归展开循环 *)
+  let rec unroll cond body env cur_cnt cur_stmt =
+    if cur_cnt > loop_count_limit then
+      (false, SEmpty, env) (* 超过限制，返回原始语句 *)
+    else
+      let try_cond = simplify_expr env cond in(
+      match try_cond with
+      | EInt 0 -> 
+        (true, cur_stmt, env) (* 条件为0，循环结束，输出 *)
+      | EInt n when n <> 0 ->
+        let new_body, new_env = optimize_stmt (body, env) in
+        let new_stmt = combine_stmt cur_stmt new_body in
+        unroll cond body new_env (cur_cnt + 1) new_stmt (* 递归展开 *)
+      | _ ->
+        (false, SEmpty, env) (* 无法得知是否继续，返回原始语句 *)
+      )
+  in
+
+  unroll cond body env 0 SEmpty
+
+(* --- 死代码消除 --- *)
+(* 从表达式中收集被使用的变量 *)
 let rec collect_reads_expr expr =
   match expr with
   | EVar name -> SSet.singleton name
@@ -331,7 +370,7 @@ let rec collect_reads_expr expr =
   | EBinop (_, e1, e2) -> SSet.union (collect_reads_expr e1) (collect_reads_expr e2)
   | ECall (_, args) -> List.fold_left (fun acc e -> SSet.union acc (collect_reads_expr e)) SSet.empty args
 
-(* Collect variables read in a statement *)
+(* 在语句中收集被使用的变量 *)
 let rec collect_reads_stmt stmt =
   match stmt with
   | SEmpty | SBreak | SContinue | SReturn None -> SSet.empty
@@ -346,7 +385,8 @@ let rec collect_reads_stmt stmt =
   | SBlock stmts ->
       List.fold_left (fun acc s -> SSet.union acc (collect_reads_stmt s)) SSet.empty stmts
 
-(* The DCE transformation pass *)
+(* 去除死代码生成的部分 *)
+(* 去除死代码的时候感觉也得考虑一下作用域的问题啊…… *)
 let rec dce_stmt used_vars stmt =
   match stmt with
   | SDeclare (name, e) ->
@@ -368,46 +408,13 @@ let rec dce_stmt used_vars stmt =
       let filtered_stmts = List.filter (function SEmpty -> false | _ -> true) new_stmts in
       (match filtered_stmts with
       | [] -> SEmpty
-      | [s] -> s
+      | [SDeclare (_, _)] -> SEmpty
       | ss -> SBlock ss)
   | other -> other
 
 let dce_pass stmt =
   let used_vars = collect_reads_stmt stmt in
   dce_stmt used_vars stmt
-
-(* --- Loop Unrolling --- *)
-let unroll_loops (stmt, env_stack) = (* 参数改为env_stack *)
-  let rec unroll_stmt s =
-    match s with
-    | SWhile (EBinop(Le, EVar loop_var, EInt max_val), SBlock body) ->
-        let start_val = 
-          match lookup_var loop_var env_stack  with
-          | Some (Some n) when n > 0 && n <= max_val -> n
-          | _ -> -1 (* 无法展开 *)
-        in
-        if start_val > 0 then
-          let unrolled_body = ref [] in
-          let current_val = ref start_val in
-          while !current_val <= max_val do
-            (* 创建带新作用域的栈 *)
-            let iter_stack = 
-              declare_var loop_var (Some !current_val) env_stack
-            in
-            let (unrolled_iter_body, _) = 
-              optimize_stmt (SBlock body, iter_stack)
-            in
-            unrolled_body := unrolled_iter_body :: !unrolled_body;
-            current_val := !current_val + 1
-          done;
-          SBlock (List.rev !unrolled_body)
-        else s
-    | SIf (c, ts, es) -> SIf (c, unroll_stmt ts, Option.map unroll_stmt es)
-    | SBlock stmts -> SBlock (List.map unroll_stmt stmts)
-    | other -> other
-  in
-  unroll_stmt stmt
-
 
 (* --- Function Inlining --- *)
 
@@ -541,22 +548,15 @@ let inline_pass (Program funcs) =
 
 (* 优化函数 *)
 let optimize_func (f: func_def) : func_def =
-  (*print_endline ("Optimizing function: " ^ f.name);*)
-  let (body1, env1) = optimize_stmt (f.body, new_scope () )  in
-  let body2 = unroll_loops (body1, env1) in
-  
-  (*print_endline (string_of_stmt "" body2);
-  print_endline "-- end of phase 1 --\n";*)
-  
-  let (body3, _) = optimize_stmt (body2, new_scope () ) in
-  (* 去除死代码的时候感觉也得考虑一下作用域的问题啊…… *)
-  (* 先删掉这个*)
-  let body4 = body3 in
-  
-  (*print_endline (string_of_stmt "" body4);
-  print_endline "-- end of phase 2 --\n";*)
+  let (body1, _) = optimize_stmt (f.body, new_scope () )  in
+  let body2 = dce_pass body1 in
 
-  { f with body = body4 }
+  (*
+  print_endline ("Optimizing function: " ^ f.name);
+  print_endline (string_of_stmt "" body2);
+  print_endline "";*)
+
+  { f with body = body2 }
 
 let optimize_program (Program funcs) =
   let rec run_to_fixed_point p =

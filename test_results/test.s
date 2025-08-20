@@ -16,9 +16,6 @@ test0_1:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, x0, 3
-	addi t0, x0, 4
-	addi t0, x0, 5
 	addi a0, x0, 3
 	jal x0, test0_1_return
 test0_1_return:
@@ -30,10 +27,6 @@ test0_2:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, x0, 5
-	addi t0, x0, 10
-	addi t0, x0, 3
-	addi t0, x0, 8
 	addi a0, x0, 18
 	jal x0, test0_2_return
 test0_2_return:
@@ -64,7 +57,6 @@ test0_4:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, x0, 10
 	addi a0, x0, 10
 	jal x0, test0_4_return
 test0_4_return:
@@ -137,7 +129,6 @@ test1_3:
 	sw s0, 8(sp)
 	sw s1, 4(sp)
 	addi s0, sp, 16
-	addi t0, x0, 0
 	addi t0, x0, 1
 	addi t1, x0, 2
 	addi t2, x0, 3
@@ -213,7 +204,6 @@ test1_4_2:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, x0, 20
 	addi a0, x0, 20
 	jal x0, test1_4_2_return
 test1_4_2_return:
@@ -225,7 +215,6 @@ test1_4_3:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, x0, 10
 	addi a0, x0, 10
 	jal x0, test1_4_3_return
 test1_4_3_return:
@@ -237,15 +226,7 @@ test2_1:
 	addi sp, sp, -16
 	sw s0, 12(sp)
 	addi s0, sp, 16
-	addi t0, x0, 10
-	addi t1, x0, 0
-while_start_8:
-	bge zero, t0, while_end_10
-	addi t0, t0, -1
-	add t1, t1, t0
-	jal x0, while_start_8
-while_end_10:
-	addi a0, t1, 0
+	addi a0, x0, 55
 	jal x0, test2_1_return
 test2_1_return:
 	lw s0, 12(sp)
