@@ -231,12 +231,48 @@ test2_1_return:
 	addi sp, sp, 16
 	jalr x0, ra, 0
 
+tailcall:
+	addi sp, sp, -32
+	sw ra, 28(sp)
+	sw s0, 24(sp)
+	sw s1, 20(sp)
+	sw s2, 16(sp)
+	sw s3, 12(sp)
+	addi s0, sp, 32
+	addi s1, a0, 0
+	addi s2, a1, 0
+	bne s2, x0, else_8
+	addi a0, s1, 0
+	jal x0, tailcall_return
+else_8:
+	add s1, s1, s2
+	addi s3, x0, 1
+	sub s2, s2, s3
+	addi a0, s1, 0
+	addi a1, s2, 0
+	jal ra, tailcall
+	addi t0, a0, 0
+	addi a0, t0, 0
+	jal x0, tailcall_return
+tailcall_return:
+	lw ra, 28(sp)
+	lw s0, 24(sp)
+	lw s1, 20(sp)
+	lw s2, 16(sp)
+	lw s3, 12(sp)
+	addi sp, sp, 32
+	jalr x0, ra, 0
+
 main:
 	addi sp, sp, -16
 	sw ra, 12(sp)
 	sw s0, 8(sp)
 	addi s0, sp, 16
-	addi a0, x0, 0
+	addi s1, x0, 10
+	addi a0, s1, 0
+	jal ra, tailcall
+	addi t0, a0, 0
+	addi a0, t0, 0
 	jal x0, main_return
 main_return:
 	lw ra, 12(sp)

@@ -112,7 +112,12 @@ int test2_1(){
     return ans;
 }
 
+int tailcall(int sum, int n){
+    if(n == 0) return sum;
+    else return tailcall(sum+n, n-1);
+}
+
 
 int main(){
-    return 0;
+    return tailcall(10);
 }

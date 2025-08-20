@@ -141,7 +141,7 @@ let rec simplify_expr env = function
   | EInt _ as c -> c
   | EVar name -> 
     (match lookup_var name env with
-      (*| Some (Some value) -> EInt value*)
+      | Some (Some value) -> EInt value
       | _ -> EVar name)
   | EUnop (op, e) ->
       let se = simplify_expr env e in

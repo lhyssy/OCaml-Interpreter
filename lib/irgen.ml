@@ -271,7 +271,7 @@ let rec compile_expr env expr : vreg =
       rd
 ;;
 
-(* 表达式求值，并将结果返回至虚拟寄存器*)
+(* 表达式求值，并将结果返回至虚拟寄存器 *)
 let rec compile_expr_vreg env expr dest_vreg = 
   match expr with
   | EInt n -> 
@@ -444,6 +444,7 @@ let rec compile_expr_vreg env expr dest_vreg =
       )
 ;;
 
+(* 针对“条件”的表达式求值 *)
 let rec compile_cond env cond false_label: unit =
   match cond with
   | EUnop (Not, e) ->
@@ -514,6 +515,7 @@ let rec compile_cond env cond false_label: unit =
     let cond_vreg = compile_expr env cond in
     emit env (IR_Beqz (cond_vreg, false_label));
 ;;
+
 (* 编译语句 *)
 let rec compile_stmt env stmt : unit =
   match stmt with
@@ -620,21 +622,146 @@ and is_leaf_function_expr expr =
   | ECall _ -> false
 ;;
 
-(* 尾递归优化相关 *)
-let is_tail_call body =
-  match body with
+(* 确认函数是否是尾递归 *)
+(* 检查表达式中是否包含对指定函数的调用 *)
+let rec has_function_call func_name expr =
+  match expr with
+  | EInt _ | EVar _ -> false
+  | EUnop (_, e) -> has_function_call func_name e
+  | EBinop (_, e1, e2) -> 
+      has_function_call func_name e1 || has_function_call func_name e2
+  | ECall (name, args) ->
+      name = func_name || List.exists (has_function_call func_name) args
+
+(* 检查语句中是否包含对指定函数的调用 *)
+let rec has_function_call_in_stmt func_name stmt =
+  match stmt with
+  | SEmpty | SBreak | SContinue -> false
+  | SExpr e -> has_function_call func_name e
+  | SReturn (Some e) -> has_function_call func_name e
+  | SReturn None -> false
+  | SIf (cond, then_stmt, else_opt) ->
+      has_function_call func_name cond ||
+      has_function_call_in_stmt func_name then_stmt ||
+      (match else_opt with
+       | Some else_stmt -> has_function_call_in_stmt func_name else_stmt
+       | None -> false)
+  | SWhile (cond, body) ->
+      has_function_call func_name cond ||
+      has_function_call_in_stmt func_name body
+  | SBlock stmts ->
+      List.exists (has_function_call_in_stmt func_name) stmts
+  | SDeclare (_, e) -> has_function_call func_name e
+  | SAssign (_, e) -> has_function_call func_name e
+
+(* 检查表达式是否是对指定函数的尾调用 *)
+let is_tail_call func_name expr =
+  match expr with
+  | ECall (name, _) -> name = func_name
   | _ -> false
+
+(* 检查语句是否包含尾递归调用 *)
+let rec check_tail_recursion func_name stmt =
+  match stmt with
+  | SEmpty | SBreak | SContinue -> true
+  | SExpr e -> not (has_function_call func_name e)
+  | SReturn (Some e) -> 
+      (* return语句中的表达式如果是函数调用，则必须是尾调用 *)
+      if has_function_call func_name e then
+        is_tail_call func_name e
+      else
+        true
+  | SReturn None -> true
+  | SIf (cond, then_stmt, else_opt) ->
+      (* 条件表达式中不能有递归调用 *)
+      not (has_function_call func_name cond) &&
+      (* then分支必须是尾递归的 *)
+      check_tail_recursion func_name then_stmt &&
+      (* else分支（如果存在）也必须是尾递归的 *)
+      (match else_opt with
+       | Some else_stmt -> check_tail_recursion func_name else_stmt
+       | None -> true)
+  | SWhile (cond, body) ->
+      (* while循环中的递归调用不能是尾递归 *)
+      not (has_function_call func_name cond) &&
+      not (has_function_call_in_stmt func_name body)
+  | SBlock stmts -> check_tail_recursion_in_block func_name stmts
+  | SDeclare (_, e) -> not (has_function_call func_name e)
+  | SAssign (_, e) -> not (has_function_call func_name e)
+
+(* 检查语句块中的尾递归性 *)
+and check_tail_recursion_in_block func_name stmts =
+  let rec check_stmts = function
+    | [] -> true
+    | [last_stmt] -> 
+        (* 最后一个语句可以包含尾递归调用 *)
+        check_tail_recursion func_name last_stmt
+    | stmt :: rest ->
+        (* 非最后的语句不能包含递归调用 *)
+        not (has_function_call_in_stmt func_name stmt) &&
+        check_stmts rest
+  in
+  check_stmts stmts
+
+(* 主函数：检查函数定义是否为尾递归 *)
+let is_tail_recursive (func_def: func_def) =
+  let func_name = func_def.name in
+  (* 如果函数体中没有递归调用，则不是递归函数 *)
+  if not (has_function_call_in_stmt func_name func_def.body) then
+    false
+  else
+    (* 检查所有递归调用是否都是尾调用 *)
+    check_tail_recursion func_name func_def.body
 ;;
 
 (* 编译尾递归调用 *)
-let compile_stmt_tailcall env body =
+let compile_stmt_tailcall env body name tail_label =
   match body with
+  | SReturn (Some (ECall (func_name, args))) when (func_name = name) ->
+      let args_size = List.length args in
+      let args_rev = List.rev args in
+
+      let num_reg_args = min 8 (List.length args) in
+      let num_stack_args = (List.length args) - num_reg_args in
+      let stack_args_size = num_stack_args * 4 in
+
+      let cur_t_id = env.t_reg_saves in
+      env.t_reg_saves <- cur_t_id + 1;
+
+      (* 1. 调整栈指针 *)
+      if num_stack_args > 0 then begin
+        emit env (IR_Adjust_SP (-stack_args_size));
+      end;
+
+      (* 2. 计算每个参数的结果，并将结果推入对应位置（倒序）*)
+      List.iteri (fun i arg ->
+        let arg_no = args_size - i - 1 in
+
+        if arg_no >= 8 then
+          let temp_vreg = fresh_vreg env in
+          compile_expr_vreg env arg temp_vreg;
+          let offset = (arg_no - 8) * 4 in (* 偏移量相对于 s0 *)
+          emit env (IR_Push_Caller_Stack_Arg (temp_vreg, offset))
+        else
+          compile_expr_vreg env arg (arg_no + 1) (* a0-a7 对应 vregs 1-8 *)
+      ) args_rev;
+
+      (* 3. 调用函数 *)
+      emit env (IR_J tail_label);
+
+      (* 4. 恢复栈指针 *)
+      if num_stack_args > 0 then begin
+        emit env (IR_Adjust_SP stack_args_size);
+      end;
+
   | _ -> compile_stmt env body;
+
+  (* 对于尾递归调用的优化我也做不下去了 *)
 ;;
 
 
 (* 编译一个函数 *)
-let compile_func (func_def: func_def) func_name is_leaf =
+let compile_func (func_def: func_def) func_name is_leaf is_tail_call =
   let env = init_compile_env () in
   let return_label = func_name ^ "_return" in
   env.current_func_return_label <- return_label;
@@ -687,10 +814,10 @@ let compile_func (func_def: func_def) func_name is_leaf =
   process_params func_def.params 0 is_leaf;
 
   (* 编译函数体 *)
-  let is_tail_call = is_tail_call func_def.body in
-  if is_tail_call then begin
-    emit env (IR_Label (func_name ^ "_tailcall"));
-    compile_stmt_tailcall env func_def.body;
+  if is_tail_call && (List.length func_def.params <= 8) then begin
+    let tail_label = func_name ^ "_tailcall" in
+    emit env (IR_Label (tail_label));
+    compile_stmt_tailcall env func_def.body func_name tail_label;
   end
   else 
     compile_stmt env func_def.body;
@@ -734,8 +861,9 @@ let rec run_peephole_to_fixed_point instrs =
 (* --- 将源代码生成为IR形式 --- *)
 let gen_ir_func (func: func_def) = 
   let is_leaf = func.name <> "main" && (is_leaf_function_body func.body) in
+  let is_tail_call = is_tail_recursive func in
 
-  let (instrs, _) = compile_func func func.name is_leaf in
+  let (instrs, _) = compile_func func func.name is_leaf is_tail_call in
   let instrs = run_peephole_to_fixed_point instrs in
   {
     return_type = func.return_type;
