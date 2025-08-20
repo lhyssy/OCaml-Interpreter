@@ -715,53 +715,127 @@ let is_tail_recursive (func_def: func_def) =
 ;;
 
 (* 编译尾递归调用 *)
-let compile_stmt_tailcall env body name tail_label =
-  match body with
-  | SReturn (Some (ECall (func_name, args))) when (func_name = name) ->
-      let args_size = List.length args in
-      let args_rev = List.rev args in
+(* 尾递归专用编译函数 *)
+let rec compile_stmt_tailcall env stmt func_name params tail_label: unit =
+  match stmt with
+  | SEmpty -> ()
+  | SExpr e -> let _ = compile_expr env e in ()
+  
+  (* 尾递归优化的核心：处理return语句中的尾调用 *)
+  | SReturn (Some e) ->
+      (match e with
+      | ECall (name, args) when name = func_name ->
+          (* 这是一个尾递归调用，优化为跳转 *)
+          compile_tail_call env args tail_label
+      | EInt n -> 
+          emit env (IR_Li (1, n))
+      | _ -> 
+          let vreg = compile_expr env e in
+          emit env (IR_Mv (1, vreg))
+      );
+      emit env (IR_J env.current_func_return_label)
+      
+  | SReturn None ->
+      emit env (IR_Li (1, 0));
+      emit env (IR_J env.current_func_return_label)
+      
+  | SDeclare (name, init_expr) ->
+      let init_vreg = compile_expr env init_expr in
+      env.var_env <- add_var env.var_env name init_vreg;
+      
+  | SAssign (name, expr) ->
+      let dest_vreg = find_var env.var_env name in
+      compile_expr_vreg env expr dest_vreg;
+      
+  (* 在if-else语句中处理尾递归 *)
+  | SIf (cond, then_s, else_opt) ->
+      let else_label = fresh_label "else" in
+      let end_label = fresh_label "endif" in
 
-      let num_reg_args = min 8 (List.length args) in
-      let num_stack_args = (List.length args) - num_reg_args in
-      let stack_args_size = num_stack_args * 4 in
+      compile_cond env cond else_label;
+      compile_stmt_tailcall env then_s func_name params tail_label;
 
-      let cur_t_id = env.t_reg_saves in
-      env.t_reg_saves <- cur_t_id + 1;
+      emit env (IR_J end_label);
+      emit env (IR_Label else_label);
 
-      (* 1. 调整栈指针 *)
-      if num_stack_args > 0 then begin
-        emit env (IR_Adjust_SP (-stack_args_size));
-      end;
+      (match else_opt with
+      | Some s -> compile_stmt_tailcall env s func_name params tail_label;
+      | None -> ());
 
-      (* 2. 计算每个参数的结果，并将结果推入对应位置（倒序）*)
-      List.iteri (fun i arg ->
-        let arg_no = args_size - i - 1 in
+      emit env (IR_Label end_label)
+      
+  (* while循环中不应该有尾递归调用，使用普通编译 *)
+  | SWhile (cond, body) ->
+      let start_label = fresh_label "while_start" in
+      let continue_label = fresh_label "while_continue" in
+      let end_label = fresh_label "while_end" in
+      let old_loop = env.current_loop in
+      env.current_loop <- Some (continue_label, end_label);
 
-        if arg_no >= 8 then
-          let temp_vreg = fresh_vreg env in
-          compile_expr_vreg env arg temp_vreg;
-          let offset = (arg_no - 8) * 4 in (* 偏移量相对于 s0 *)
-          emit env (IR_Push_Caller_Stack_Arg (temp_vreg, offset))
-        else
-          compile_expr_vreg env arg (arg_no + 1) (* a0-a7 对应 vregs 1-8 *)
-      ) args_rev;
+      emit env (IR_Label start_label);
+      compile_cond env cond end_label;
+      compile_stmt env body; (* 使用普通编译，因为循环体中的调用不是尾调用 *)
 
-      (* 3. 调用函数 *)
-      emit env (IR_J tail_label);
+      emit env (IR_Label continue_label);
+      emit env (IR_J start_label);
+      emit env (IR_Label end_label);
 
-      (* 4. 恢复栈指针 *)
-      if num_stack_args > 0 then begin
-        emit env (IR_Adjust_SP stack_args_size);
-      end;
+      env.current_loop <- old_loop
+      
+  | SBreak ->
+      (match env.current_loop with
+      | Some (_, end_l) -> emit env (IR_J end_l)
+      | None -> failwith "break outside loop")
+      
+  | SContinue ->
+      (match env.current_loop with
+      | Some (start_l, _) -> emit env (IR_J start_l)
+      | None -> failwith "continue outside loop")
+      
+  (* 在语句块中处理尾递归 *)
+  | SBlock stmts -> 
+      env.var_env <- in_var env.var_env;
+      compile_block_tailcall env stmts func_name params tail_label;
+      env.var_env <- out_var env.var_env;
 
-  | _ -> compile_stmt env body;
+(* 专门处理语句块中的尾递归 *)
+and compile_block_tailcall env stmts func_name params tail_label =
+  let rec compile_stmts = function
+    | [] -> ()
+    | [last_stmt] -> 
+        (* 最后一个语句可能包含尾递归调用 *)
+        compile_stmt_tailcall env last_stmt func_name params tail_label
+    | stmt :: rest ->
+        (* 非最后的语句使用普通编译 *)
+        compile_stmt env stmt;
+        compile_stmts rest
+  in
+  compile_stmts stmts
 
-  (* 对于尾递归调用的优化我也做不下去了 *)
-;;
+and compile_tail_call env (args: expr list) tail_label =
+(* 计算所有参数的值到临时寄存器 *)
+let args_size = List.length args in
+let args_rev = List.rev args in
+
+(* 将参数值赋给对应的参数变量 *)
+List.iteri (fun i arg ->
+  let arg_no = args_size - i - 1 in
+
+  if arg_no >= 8 then
+    let temp_vreg = fresh_vreg env in
+    compile_expr_vreg env arg temp_vreg;
+    let offset = (arg_no - 8) * 4 in (* 偏移量相对于 s0 *)
+    emit env (IR_Push_Caller_Stack_Arg (temp_vreg, offset))
+  else
+    compile_expr_vreg env arg (arg_no + 1) (* a0-a7 对应 vregs 1-8 *)
+) args_rev;
+
+(* 跳转到函数开始标签，而不是调用函数 *)
+emit env (IR_J tail_label)
 
 
 (* 编译一个函数 *)
-let compile_func (func_def: func_def) func_name is_leaf is_tail_call =
+let compile_func (func_def: func_def) func_name is_leaf =
   let env = init_compile_env () in
   let return_label = func_name ^ "_return" in
   env.current_func_return_label <- return_label;
@@ -814,13 +888,44 @@ let compile_func (func_def: func_def) func_name is_leaf is_tail_call =
   process_params func_def.params 0 is_leaf;
 
   (* 编译函数体 *)
-  if is_tail_call && (List.length func_def.params <= 8) then begin
-    let tail_label = func_name ^ "_tailcall" in
-    emit env (IR_Label (tail_label));
-    compile_stmt_tailcall env func_def.body func_name tail_label;
-  end
-  else 
-    compile_stmt env func_def.body;
+  compile_stmt env func_def.body;
+
+  (List.rev env.instructions, env)
+;;
+
+(* 编译尾递归调用：将递归调用优化为跳转到函数开始 *)
+let compile_func_tailcall (func_def: func_def) func_name =
+  let env = init_compile_env () in
+  let return_label = func_name ^ "_return" in
+  env.current_func_return_label <- return_label;
+
+  let tail_label = func_name ^ "_start" in
+  emit env (IR_Label (tail_label));
+
+  (* 处理参数 *)
+  let param_pregs = [1; 2; 3; 4; 5; 6; 7; 8] in (* vregs for a0-a7 *)
+  let rec process_params params param_idx =
+    match params with
+    | P name :: rest_params ->
+        let param_vreg = fresh_vreg env in
+        if param_idx < 8 then begin
+            (* 寄存器参数 *)
+            let preg_vreg = List.nth param_pregs param_idx in
+            emit env (IR_Mv (param_vreg, preg_vreg));
+            env.var_env <- add_var env.var_env name param_vreg;
+        end else begin
+            let offset_from_fp = (param_idx - 8) * 4 in
+            emit env (IR_Load_Callee_Stack_Arg (param_vreg, offset_from_fp));
+            env.var_env <- add_var env.var_env name param_vreg;
+        end;
+
+        process_params rest_params (param_idx + 1)
+    | [] -> ()
+  in
+  process_params func_def.params 0;
+
+  (* 编译函数体 *)
+  compile_stmt_tailcall env func_def.body func_name func_def.params tail_label;
 
   (List.rev env.instructions, env)
 ;;
@@ -861,9 +966,14 @@ let rec run_peephole_to_fixed_point instrs =
 (* --- 将源代码生成为IR形式 --- *)
 let gen_ir_func (func: func_def) = 
   let is_leaf = func.name <> "main" && (is_leaf_function_body func.body) in
-  let is_tail_call = is_tail_recursive func in
+  let is_tail_call = (is_tail_recursive func) && (List.length func.params <= 8) in
 
-  let (instrs, _) = compile_func func func.name is_leaf is_tail_call in
+  let (instrs, _) = 
+    if is_leaf || (not is_tail_call) then
+      compile_func func func.name is_leaf
+    else
+      compile_func_tailcall func func.name
+  in
   let instrs = run_peephole_to_fixed_point instrs in
   {
     return_type = func.return_type;

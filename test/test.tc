@@ -119,5 +119,5 @@ int tailcall(int sum, int n){
 
 
 int main(){
-    return tailcall(10);
+    return tailcall(0, 10);
 }
